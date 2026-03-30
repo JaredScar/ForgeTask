@@ -1,0 +1,119 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { app } from 'electron';
+import { randomUUID } from 'node:crypto';
+import type BetterSqlite3 from 'better-sqlite3';
+
+/** Lazy require so ABI errors can be caught in main (not at module load). */
+function loadBetterSqlite3(): typeof BetterSqlite3 {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('better-sqlite3') as typeof BetterSqlite3;
+}
+
+function loadSchemaSql(): string {
+  const candidates = [
+    path.join(__dirname, 'schema.sql'),
+    path.join(__dirname, 'db', 'schema.sql'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      return fs.readFileSync(p, 'utf-8');
+    }
+  }
+  throw new Error('schema.sql not found next to compiled database.js');
+}
+
+function runMigrations(db: InstanceType<typeof BetterSqlite3>): void {
+  const maxVer = () =>
+    (db.prepare(`SELECT MAX(version) as v FROM schema_migrations`).get() as { v: number | null }).v ?? 0;
+  const now = new Date().toISOString();
+
+  if (maxVer() < 1) {
+    db.prepare(`INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?)`).run(now);
+  }
+  if (maxVer() < 2) {
+    /* Remove legacy demo rows from older app versions (fixed IDs / seed names only). */
+    db.prepare(`DELETE FROM workflows WHERE id IN ('wf_morning','wf_backup','wf_workmode','wf_clean')`).run();
+    db.prepare(
+      `DELETE FROM team_members WHERE email IN ('alex@company.com','sarah@company.com','mike@company.com')`
+    ).run();
+    db.prepare(
+      `DELETE FROM variables WHERE name IN ('BACKUP_PATH','WORK_WIFI','SLACK_WEBHOOK','RETRY_COUNT','DEBUG_MODE')`
+    ).run();
+    db.prepare(`INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?)`).run(now);
+  }
+  if (maxVer() < 3) {
+    /* Collapse duplicate workflows created by the old builder default name "Morning Startup v3" (keep newest). */
+    const dupName = 'Morning Startup v3';
+    const rows = db.prepare(`SELECT id FROM workflows WHERE name = ? ORDER BY updated_at DESC`).all(dupName) as { id: string }[];
+    for (let i = 1; i < rows.length; i++) {
+      db.prepare(`DELETE FROM workflows WHERE id = ?`).run(rows[i].id);
+    }
+    db.prepare(`INSERT INTO schema_migrations (version, applied_at) VALUES (3, ?)`).run(now);
+  }
+}
+
+/** API key, local user row, and default settings — safe to run on every startup. */
+function ensureAppDefaults(db: InstanceType<typeof BetterSqlite3>): void {
+  const hasApi = db.prepare(`SELECT 1 FROM settings WHERE key = 'api_key'`).get();
+  if (!hasApi) {
+    const key = 'tf_live_' + randomUUID().replace(/-/g, '').slice(0, 24);
+    db.prepare(`INSERT INTO settings (key, value) VALUES ('api_key', ?)`).run(key);
+  }
+
+  const hasSelf = db.prepare(`SELECT 1 FROM team_members WHERE is_self = 1`).get();
+  if (!hasSelf) {
+    db.prepare(
+      `INSERT INTO team_members (id, email, display_name, role, last_active, workflow_count, is_self) VALUES (?, ?, ?, ?, NULL, 0, 1)`
+    ).run(randomUUID(), 'local@taskforge.app', 'You', 'Owner');
+  }
+
+  const defaults: [string, string][] = [
+    ['log_retention_days', '30'],
+    ['engine_auto_start', '1'],
+    ['notify_desktop', '1'],
+  ];
+  const ins = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);
+  for (const [k, v] of defaults) {
+    ins.run(k, v);
+  }
+}
+
+/** Copy legacy DB from pre-rename userData folders (same parent as current `userData`). */
+function migrateLegacySqliteIfNeeded(userData: string): void {
+  const newDb = path.join(userData, 'taskforge.db');
+  if (fs.existsSync(newDb)) return;
+
+  const parent = path.dirname(userData);
+  const legacyDirs = [path.join(parent, 'AutoDesk'), path.join(parent, 'autodesk')];
+  for (const legacyDir of legacyDirs) {
+    const oldDb = path.join(legacyDir, 'autodesk.db');
+    if (!fs.existsSync(oldDb)) continue;
+    fs.mkdirSync(userData, { recursive: true });
+    for (const ext of ['', '-wal', '-shm'] as const) {
+      const from = oldDb + ext;
+      const to = newDb + ext;
+      if (fs.existsSync(from)) {
+        try {
+          fs.copyFileSync(from, to);
+        } catch {
+          /* ignore partial copy */
+        }
+      }
+    }
+    return;
+  }
+}
+
+export function openDatabase(): InstanceType<typeof BetterSqlite3> {
+  const BetterSqlite3 = loadBetterSqlite3();
+  const userData = app.getPath('userData');
+  migrateLegacySqliteIfNeeded(userData);
+  const dbPath = path.join(userData, 'taskforge.db');
+  const db = new BetterSqlite3(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.exec(loadSchemaSql());
+  runMigrations(db);
+  ensureAppDefaults(db);
+  return db;
+}

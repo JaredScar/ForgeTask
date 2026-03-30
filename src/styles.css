@@ -1,0 +1,52 @@
+@import 'tailwindcss';
+
+/* Scan Angular templates — paths relative to project root (cwd when Angular esbuild runs) */
+@source "./src/app/**/*.ts";
+@source "./src/app/**/*.html";
+/* Fallback: paths relative to this CSS file in src/ */
+@source "./app/**/*.ts";
+@source "./app/**/*.html";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, 'Segoe UI', Inter, sans-serif;
+  --color-tf-bg: #0a0a0a;
+  --color-tf-surface: #141414;
+  --color-tf-card: #1a1a1a;
+  --color-tf-border: #2a2a2a;
+  --color-tf-muted: #737373;
+  --color-tf-green: #22c55e;
+  --color-tf-green-dim: #16a34a;
+}
+
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background-color: var(--color-tf-bg);
+  color: #fafafa;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Angular root fills the full window */
+app-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f3f var(--color-tf-surface);
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--color-tf-surface); }
+::-webkit-scrollbar-thumb { background: #3f3f3f; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #525252; }

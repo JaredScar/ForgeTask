@@ -1,0 +1,77 @@
+# TaskForge
+
+Modern desktop automation for Windows — a **Task Scheduler–style** app with a visual workflow builder, triggers, actions, execution logs, and optional AI-assisted drafts.
+
+## Screenshots
+
+| Workflows | Triggers |
+|:---:|:---:|
+| ![Workflows — empty state and sidebar](docs/screenshots/workflows.png) | ![Triggers — Basic vs Advanced (Pro)](docs/screenshots/triggers.png) |
+
+| Actions | Execution logs |
+|:---:|:---:|
+| ![Actions — Basic and Advanced (Pro)](docs/screenshots/actions.png) | ![Execution logs — empty state](docs/screenshots/logs.png) |
+
+| Settings (organization license & preferences) |
+|:---:|
+| ![Settings — organization license key](docs/screenshots/settings.png) |
+
+The **Free** tier includes core automation (workflows, basic triggers/actions, logs, settings). **Pro** and **Enterprise** features (AI Assistant, Variables, Marketplace, Analytics, Team, API Access, Audit Logs, advanced triggers/actions) require an **organization license key**; see [`PLAN.md`](PLAN.md) §20 for the entitlement and optional online validation design.
+
+## Stack
+
+- **Electron** (main process + preload)
+- **Angular 19** (standalone components, lazy routes)
+- **Tailwind CSS v4**
+- **SQLite** (`better-sqlite3`) for workflows, logs, variables, audit trail
+- **Express** local API (`127.0.0.1:38474`) to trigger workflows with a Bearer token
+
+## Scripts
+
+| Command | Description |
+|--------|-------------|
+| `npm start` | Angular dev server only (browser; IPC mocked) |
+| `npm run electron:dev` | Angular `ng serve` + Electron with hot reload against `http://127.0.0.1:4200` |
+| `npm run build:all` | Production Angular build + compile Electron `dist-electron/` |
+| `npm run electron` | Compile Electron and launch (loads built Angular from `dist/`) |
+| `npm run electron:dist` | Build + Windows NSIS installer via `electron-builder` |
+| `npm run rebuild:native` | Recompile `better-sqlite3` for the installed **Electron** Node ABI (run after `npm install` or upgrading Electron) |
+
+## Development
+
+1. Install dependencies: `npm install` (runs `@electron/rebuild` for `better-sqlite3` via the `electron-rebuild` CLI).
+2. Run `npm run electron:dev` — wait for the UI, then use the app.
+3. Data file: `%APPDATA%/TaskForge/taskforge.db` (Electron `userData`, after packaging with `productName` **TaskForge**). Upgrading from the pre-rename app: the first launch copies `autodesk.db` from legacy `%APPDATA%/AutoDesk` or `%APPDATA%/autodesk` if the new database is missing.
+
+If the window never opens and the console shows `NODE_MODULE_VERSION` / “compiled against a different Node.js version”, run `npm run rebuild:native` so the native module matches Electron (not your system Node).
+
+## Auto-updates
+
+`electron-updater` runs `checkForUpdatesAndNotify()` when `app.isPackaged` is true. Configure `publish` in `electron-builder` (e.g. GitHub releases) for production updates.
+
+## API example
+
+```bash
+curl -X POST http://127.0.0.1:38474/v1/workflows/run \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"workflow_id\":\"YOUR_WORKFLOW_ID\",\"params\":{}}"
+```
+
+Retrieve or regenerate the key in **Enterprise → API Access** (requires an active Pro/Enterprise license).
+
+## License
+
+TaskForge is released under the [**GNU General Public License v3.0**](LICENSE) (**GPL-3.0**). See the license file for the full terms.
+
+If you distribute modified versions, follow the GPL’s source-offer and license-preservation requirements. Combining this code with proprietary services or add-ons may require careful separation and legal review.
+
+Copyright © 2026 Jared Scarito.
+
+---
+
+### Publishing on GitHub — checklist
+
+- **Build:** `npm run build && npm run build:electron` should pass.
+- **Secrets:** Do not commit production `TASKFORGE_ENTITLEMENT_SECRET` (legacy `AUTODESK_ENTITLEMENT_SECRET` is still read for compatibility), API keys, or signing certificates; use CI secrets for release builds.
+- **Plan vs UI:** The app references “PLAN.md §20” in the sidebar; keeping `PLAN.md` in the repo keeps that accurate for contributors.

@@ -1,0 +1,98 @@
+{
+  "name": "taskforge-desktop",
+  "version": "2.1.0",
+  "description": "TaskForge — modern Windows Task Scheduler–style desktop automation",
+  "license": "GPL-3.0",
+  "author": "Jared Scarito",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "build:electron": "tsc -p tsconfig.electron.json && node scripts/copy-electron-assets.mjs",
+    "build:all": "npm run build && npm run build:electron",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test",
+    "rebuild:native": "electron-rebuild -f -w better-sqlite3",
+    "electron:dev": "npm run build:electron && concurrently -k \"ng serve --host 127.0.0.1 --port 4200\" \"wait-on http-get://127.0.0.1:4200 && electron . --dev\"",
+    "electron": "npm run build:electron && electron .",
+    "electron:pack": "npm run build:all && electron-builder --dir",
+    "electron:dist": "npm run build:all && electron-builder",
+    "postinstall": "electron-rebuild -f -w better-sqlite3"
+  },
+  "private": true,
+  "build": {
+    "appId": "app.taskforge.desktop",
+    "productName": "TaskForge",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/taskforge/browser/**/*",
+      "dist-electron/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "@angular/cdk": "^19.2.19",
+    "@angular/common": "^19.2.0",
+    "@angular/compiler": "^19.2.0",
+    "@angular/core": "^19.2.0",
+    "@angular/forms": "^19.2.0",
+    "@angular/platform-browser": "^19.2.0",
+    "@angular/platform-browser-dynamic": "^19.2.0",
+    "@angular/router": "^19.2.0",
+    "@ngrx/signals": "^19.2.1",
+    "better-sqlite3": "^12.8.0",
+    "chokidar": "^4.0.3",
+    "cors": "^2.8.6",
+    "electron-updater": "^6.8.3",
+    "express": "^5.2.1",
+    "node-schedule": "^2.1.1",
+    "rxjs": "~7.8.0",
+    "systeminformation": "^5.31.5",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.15.0"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^19.2.22",
+    "@angular/cli": "^19.2.22",
+    "@angular/compiler-cli": "^19.2.0",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jasmine": "~5.1.0",
+    "@types/node": "^25.5.0",
+    "@types/node-schedule": "^2.1.8",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^41.1.0",
+    "electron-builder": "^26.8.1",
+    "@electron/rebuild": "^4.0.2",
+    "jasmine-core": "~5.6.0",
+    "karma": "~6.4.0",
+    "karma-chrome-launcher": "~3.2.0",
+    "karma-coverage": "~2.2.0",
+    "karma-jasmine": "~5.1.0",
+    "karma-jasmine-html-reporter": "~2.1.0",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.2",
+    "typescript": "~5.7.2",
+    "wait-on": "^9.0.4"
+  }
+}

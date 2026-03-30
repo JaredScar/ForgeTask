@@ -1,0 +1,222 @@
+<div class="fixed right-4 top-16 z-[99] flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 pointer-events-none">
+  @for (t of toast.items(); track t.id) {
+    <div [ngClass]="toastBoxClass(t.level)">
+      <span class="min-w-0 flex-1">{{ t.message }}</span>
+      <button type="button" class="shrink-0 text-tf-muted hover:text-white" (click)="toast.dismiss(t.id)" aria-label="Dismiss">×</button>
+    </div>
+  }
+</div>
+
+@if (confirmDialog.active(); as dlg) {
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+    <div class="w-full max-w-md rounded-xl border border-tf-border bg-tf-card p-6 shadow-xl" role="alertdialog" aria-modal="true">
+      <h2 class="text-lg font-semibold">{{ dlg.title }}</h2>
+      <p class="mt-2 text-sm text-neutral-300">{{ dlg.message }}</p>
+      <div class="mt-6 flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-lg border border-tf-border px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+          (click)="confirmDialog.respond(false)"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+          (click)="confirmDialog.respond(true)"
+        >
+          {{ dlg.confirmLabel ?? 'Confirm' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<header
+  class="flex h-12 shrink-0 items-center justify-between border-b border-tf-border bg-tf-surface px-4"
+  style="-webkit-app-region: drag"
+>
+  <div class="flex items-center gap-3" style="-webkit-app-region: no-drag">
+    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-tf-green/20 text-tf-green">
+      <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z" />
+      </svg>
+    </div>
+    <span class="text-sm font-semibold tracking-tight">TaskForge</span>
+    @if (proUnlocked()) {
+      <span class="rounded-md bg-tf-green/15 px-1.5 py-0.5 text-[10px] font-medium text-tf-green">Pro</span>
+    } @else {
+      <span class="rounded-md border border-tf-border px-1.5 py-0.5 text-[10px] font-medium text-tf-muted">Free</span>
+    }
+  </div>
+  <div class="flex items-center gap-2" style="-webkit-app-region: no-drag">
+    @if (stats().engineRunning) {
+      <span class="flex items-center gap-1.5 rounded-full border border-tf-border bg-tf-card px-3 py-1 text-xs text-neutral-300">
+        <span class="h-1.5 w-1.5 rounded-full bg-tf-green"></span>
+        Engine running
+      </span>
+    } @else {
+      <span
+        class="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-200"
+      >
+        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400"></span>
+        Engine starting…
+      </span>
+    }
+    @if (proUnlocked() && selfMember(); as u) {
+      <a
+        routerLink="/team"
+        class="rounded-lg border border-tf-border bg-tf-card px-3 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+      >
+        {{ u.display_name }} · {{ u.role }}
+      </a>
+    }
+  </div>
+</header>
+
+<div class="flex min-h-0 flex-1">
+  <aside class="flex w-56 shrink-0 flex-col border-r border-tf-border bg-tf-surface py-4 min-h-0">
+    <div class="flex min-h-0 flex-1 flex-col">
+      <div class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-0 pb-2">
+        <p class="px-4 text-[10px] font-semibold uppercase tracking-wider text-tf-muted">Automation</p>
+        <nav class="mt-2 space-y-0.5 px-2">
+          <a
+            routerLink="/workflows"
+            routerLinkActive="tf-nav-item--active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="tf-nav-item flex w-full items-center justify-between gap-2"
+          >
+            <span>Workflows</span>
+            <span class="tf-nav-meta tabular-nums">{{ wfCount() }}</span>
+          </a>
+          <a
+            routerLink="/triggers"
+            routerLinkActive="tf-nav-item--active"
+            class="tf-nav-item flex w-full items-center justify-between gap-2"
+          >
+            <span>Triggers</span>
+            <span class="tf-nav-meta tabular-nums">{{ stats().triggerCount }}</span>
+          </a>
+          <a
+            routerLink="/actions"
+            routerLinkActive="tf-nav-item--active"
+            class="tf-nav-item flex w-full items-center justify-between gap-2"
+          >
+            <span>Actions</span>
+            <span class="tf-nav-meta tabular-nums">{{ stats().actionCount }}</span>
+          </a>
+          <a routerLink="/logs" routerLinkActive="tf-nav-item--active" class="tf-nav-item flex w-full items-center gap-2">
+            Logs
+          </a>
+          <a
+            routerLink="/settings"
+            routerLinkActive="tf-nav-item--active"
+            class="tf-nav-item flex w-full items-center gap-2"
+          >
+            Settings
+          </a>
+        </nav>
+
+        <p class="mt-6 px-4 text-[10px] font-semibold uppercase tracking-wider text-tf-muted">Pro features</p>
+        @if (proUnlocked()) {
+          <nav class="mt-2 space-y-0.5 px-2">
+            <a
+              routerLink="/ai-assistant"
+              routerLinkActive="tf-nav-item--active"
+              class="tf-nav-item flex w-full items-center gap-2"
+            >
+              AI Assistant
+            </a>
+            <a
+              routerLink="/variables"
+              routerLinkActive="tf-nav-item--active"
+              class="tf-nav-item flex w-full items-center gap-2"
+            >
+              Variables
+            </a>
+            <a
+              routerLink="/marketplace"
+              routerLinkActive="tf-nav-item--active"
+              class="tf-nav-item flex w-full items-center gap-2"
+            >
+              Marketplace
+            </a>
+            <a
+              routerLink="/analytics"
+              routerLinkActive="tf-nav-item--active"
+              class="tf-nav-item flex w-full items-center gap-2"
+            >
+              Analytics
+            </a>
+          </nav>
+        } @else {
+          <div class="mt-2 mx-2 rounded-lg border border-tf-border bg-tf-card/50 px-3 py-2 text-xs leading-relaxed text-tf-muted">
+            <p class="font-medium text-neutral-300">Pro features</p>
+            <p class="mt-1">
+              Open-source core stays free; Pro uses an <span class="text-neutral-200">organization license</span> (see PLAN.md §20).
+            </p>
+            <p class="mt-2">
+              <a routerLink="/settings" [queryParams]="{ unlock: '1' }" class="text-tf-green hover:underline">Activate in Settings</a>
+            </p>
+          </div>
+        }
+
+        <p class="mt-6 px-4 text-[10px] font-semibold uppercase tracking-wider text-tf-muted">Enterprise</p>
+        @if (proUnlocked()) {
+          <nav class="mt-2 space-y-0.5 px-2">
+            <a routerLink="/team" routerLinkActive="tf-nav-item--active" class="tf-nav-item flex w-full items-center gap-2">
+              Team
+            </a>
+            <a
+              routerLink="/api-access"
+              routerLinkActive="tf-nav-item--active"
+              class="tf-nav-item flex w-full items-center gap-2"
+            >
+              API Access
+            </a>
+            <a
+              routerLink="/audit-logs"
+              routerLinkActive="tf-nav-item--active"
+              class="tf-nav-item flex w-full items-center gap-2"
+            >
+              Audit Logs
+            </a>
+          </nav>
+        } @else {
+          <div class="mt-2 mx-2 rounded-lg border border-tf-border bg-tf-card/50 px-3 py-2 text-xs leading-relaxed text-tf-muted">
+            <p class="font-medium text-neutral-300">Enterprise</p>
+            <p class="mt-1">Team, API Access, and Audit Logs unlock with the same organization license as Pro.</p>
+            <p class="mt-2">
+              <a routerLink="/settings" [queryParams]="{ unlock: '1' }" class="text-tf-green hover:underline">Activate in Settings</a>
+            </p>
+          </div>
+        }
+      </div>
+
+      <div class="shrink-0 border-t border-tf-border px-3 py-3 text-[10px] text-tf-muted">
+        <div class="flex items-center gap-1">
+          <span class="h-1.5 w-1.5 rounded-full bg-tf-green"></span>
+          {{ stats().active }} active
+        </div>
+        <div>Queue: {{ stats().queue }} pending</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-tf-bg p-6">
+    <router-outlet />
+  </main>
+</div>
+
+<footer
+  class="flex h-8 shrink-0 items-center justify-between border-t border-tf-border bg-tf-surface px-4 text-[11px] text-tf-muted"
+>
+  <span class="flex items-center gap-3">
+    <span class="flex items-center gap-1">
+      <span class="h-1.5 w-1.5 rounded-full bg-tf-green"></span>
+      {{ stats().active }} active
+    </span>
+    <span>Queue: {{ stats().queue }} pending</span>
+  </span>
+  <span> CPU: {{ stats().cpu }}% · Memory: {{ stats().memoryMb }} MB · v{{ stats().version }} </span>
+</footer>
