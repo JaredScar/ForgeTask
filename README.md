@@ -4,17 +4,19 @@ Modern desktop automation for Windows — a **Task Scheduler–style** app with 
 
 ## Screenshots
 
+TaskForge desktop app (v2.1.0).
+
 | Workflows | Triggers |
 |:---:|:---:|
-| ![Workflows — empty state and sidebar](docs/screenshots/workflows.png) | ![Triggers — Basic vs Advanced (Pro)](docs/screenshots/triggers.png) |
+| ![TaskForge — Workflows empty state and sidebar](docs/screenshots/workflows.png) | ![TaskForge — Triggers, Basic and Advanced (Pro)](docs/screenshots/triggers.png) |
 
 | Actions | Execution logs |
 |:---:|:---:|
-| ![Actions — Basic and Advanced (Pro)](docs/screenshots/actions.png) | ![Execution logs — empty state](docs/screenshots/logs.png) |
+| ![TaskForge — Actions, Basic and Advanced (Pro)](docs/screenshots/actions.png) | ![TaskForge — Execution logs empty state](docs/screenshots/logs.png) |
 
 | Settings (organization license & preferences) |
 |:---:|
-| ![Settings — organization license key](docs/screenshots/settings.png) |
+| ![TaskForge — Settings, license and preferences](docs/screenshots/settings.png) |
 
 The **Free** tier includes core automation (workflows, basic triggers/actions, logs, settings). **Pro** and **Enterprise** features (AI Assistant, Variables, Marketplace, Analytics, Team, API Access, Audit Logs, advanced triggers/actions) require an **organization license key**; see [`PLAN.md`](PLAN.md) §20 for the entitlement and optional online validation design.
 
