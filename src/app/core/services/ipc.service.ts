@@ -1,5 +1,9 @@
 import { Injectable } from '@angular/core';
 import type { TaskForgeBridge, WorkflowDto } from '../../../types/taskforge-window';
+import {
+  LOCAL_DEV_OPENAI_API_KEY_PLACEHOLDER,
+  LOCAL_DEV_REST_API_KEY_PLACEHOLDER,
+} from '../local-dev-keys';
 
 /** Mirrors built-in templates (browser dev) — same copy as electron/marketplace-data, without node graphs. */
 const MOCK_MARKETPLACE_LIST: Array<{ id: string; title: string; author: string; description: string; pro: boolean }> = [
@@ -58,6 +62,9 @@ export class IpcService {
   private mockBridge(): TaskForgeBridge {
     if (this.mockCached) return this.mockCached;
     const mockWorkflows: WorkflowDto[] = [];
+    const mockSettings: Record<string, string> = {
+      openai_api_key: LOCAL_DEV_OPENAI_API_KEY_PLACEHOLDER,
+    };
     this.mockCached = {
       workflows: {
         list: async () => [...mockWorkflows],
@@ -160,14 +167,23 @@ export class IpcService {
         setKey: async () => ({ ok: true, unlocked: true }),
         refreshOnline: async () => ({ ok: true, unlocked: true }),
       },
-      settings: { get: async () => null, set: async () => true },
+      settings: {
+        get: async (key: string) => mockSettings[key] ?? null,
+        set: async (key: string, value: string) => {
+          mockSettings[key] = value;
+          return true;
+        },
+      },
       team: {
         list: async () => [],
         invite: async () => crypto.randomUUID(),
         remove: async () => true,
       },
       audit: { list: async () => [], export: async () => null },
-      api: { getKey: async () => '', regenerateKey: async () => '' },
+      api: {
+        getKey: async () => LOCAL_DEV_REST_API_KEY_PLACEHOLDER,
+        regenerateKey: async () => LOCAL_DEV_REST_API_KEY_PLACEHOLDER,
+      },
       marketplace: { list: async () => [...MOCK_MARKETPLACE_LIST], install: async () => null },
       ai: {
         parse: async (prompt) => ({

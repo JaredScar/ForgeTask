@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import type { AutomationEngine } from './engine/automation-engine';
 import type { TriggerManager } from './engine/trigger-manager';
 import { randomUUID } from 'node:crypto';
+import { isLocalDevRestApiPlaceholder } from './dev-placeholders';
 
 export function startApiServer(
   db: Database.Database,
@@ -17,6 +18,12 @@ export function startApiServer(
 
   app.use((req, res, next) => {
     const auth = req.headers.authorization ?? '';
+    const m = /^Bearer\s+(.+)$/i.exec(auth);
+    const bearer = m?.[1]?.trim() ?? '';
+    if (isLocalDevRestApiPlaceholder(bearer)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const key = (db.prepare(`SELECT value FROM settings WHERE key = 'api_key'`).get() as { value: string } | undefined)?.value;
     if (!key || auth !== `Bearer ${key}`) {
       res.status(401).json({ error: 'Unauthorized' });

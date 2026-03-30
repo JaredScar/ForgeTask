@@ -43,7 +43,8 @@ The **Free** tier includes core automation (workflows, basic triggers/actions, l
 
 1. Install dependencies: `npm install` (runs `@electron/rebuild` for `better-sqlite3` via the `electron-rebuild` CLI).
 2. Run `npm run electron:dev` — wait for the UI, then use the app.
-3. Data file: `%APPDATA%/TaskForge/taskforge.db` (Electron `userData`, after packaging with `productName` **TaskForge**). Upgrading from the pre-rename app: the first launch copies `autodesk.db` from legacy `%APPDATA%/AutoDesk` or `%APPDATA%/autodesk` if the new database is missing.
+3. **`npm start` (Angular only):** Settings and API Access show **dummy keys** for UI layout (`src/app/core/local-dev-keys.ts`). They are not sent to OpenAI and are **rejected** by the real local REST server if pasted into `curl`. Use Electron for working keys.
+4. Data file: `%APPDATA%/TaskForge/taskforge.db` (Electron `userData`, after packaging with `productName` **TaskForge**). Upgrading from the pre-rename app: the first launch copies `autodesk.db` from legacy `%APPDATA%/AutoDesk` or `%APPDATA%/autodesk` if the new database is missing.
 
 If the window never opens and the console shows `NODE_MODULE_VERSION` / “compiled against a different Node.js version”, run `npm run rebuild:native` so the native module matches Electron (not your system Node).
 

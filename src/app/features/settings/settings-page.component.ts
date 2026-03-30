@@ -74,6 +74,12 @@ import { ToastService } from '../../core/services/toast.service';
       <div class="rounded-xl border border-tf-border bg-tf-card p-4">
         <h2 class="text-sm font-medium">OpenAI API Key</h2>
         <p class="mt-1 text-xs text-tf-muted">Optional. Stored locally for AI Workflow Assistant.</p>
+        @if (!ipc.isElectron) {
+          <p class="mt-2 text-xs text-amber-200/90">
+            Browser preview (<code class="text-[11px]">ng serve</code>): the field is pre-filled with a
+            <strong>non-functional</strong> placeholder. It is not sent to OpenAI. Use Electron for real keys.
+          </p>
+        }
         <input
           type="password"
           [(ngModel)]="openaiKey"
@@ -117,7 +123,7 @@ import { ToastService } from '../../core/services/toast.service';
   `,
 })
 export class SettingsPageComponent implements OnInit {
-  private readonly ipc = inject(IpcService);
+  protected readonly ipc = inject(IpcService);
   private readonly toast = inject(ToastService);
   private readonly route = inject(ActivatedRoute);
 

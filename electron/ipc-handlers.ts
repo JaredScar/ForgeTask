@@ -25,6 +25,7 @@ import {
   refreshLicenseOnline,
 } from './license-remote';
 import * as si from 'systeminformation';
+import { isLocalDevOpenAiPlaceholder } from './dev-placeholders';
 
 export function registerIpcHandlers(
   db: Database.Database,
@@ -697,7 +698,7 @@ export function registerIpcHandlers(
   ipcMain.handle('ai:parse', async (_e, prompt: string) => {
     assertProEnterprise(db);
     const apiKey = (db.prepare(`SELECT value FROM settings WHERE key = 'openai_api_key'`).get() as { value: string } | undefined)?.value;
-    if (!apiKey) {
+    if (!apiKey || isLocalDevOpenAiPlaceholder(apiKey)) {
       return heuristicWorkflowFromPrompt(prompt);
     }
     try {

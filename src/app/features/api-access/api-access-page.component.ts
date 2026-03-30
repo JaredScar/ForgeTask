@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { IpcService } from '../../core/services/ipc.service';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
+import { LOCAL_DEV_REST_API_KEY_PLACEHOLDER } from '../../core/local-dev-keys';
 
 @Component({
   selector: 'app-api-access-page',
@@ -8,6 +9,12 @@ import { ConfirmDialogService } from '../../core/services/confirm-dialog.service
     <div class="max-w-2xl">
       <h1 class="text-xl font-semibold">API Access</h1>
       <p class="mt-1 text-sm text-tf-muted">Trigger workflows programmatically via REST API</p>
+      @if (!ipc.isElectron) {
+        <p class="mt-2 text-xs text-amber-200/90">
+          Browser preview: the key below is a <strong>dummy</strong> for layout only. The local server rejects it; use Electron for a real
+          <code class="text-[11px]">tf_live_…</code> key.
+        </p>
+      }
       <div class="mt-6 rounded-xl border border-tf-border bg-tf-card p-4">
         <div class="flex flex-wrap items-center gap-2">
           <code class="min-w-0 flex-1 truncate rounded-lg bg-tf-bg px-3 py-2 font-mono text-xs">{{ visibleKey() }}</code>
@@ -65,7 +72,7 @@ import { ConfirmDialogService } from '../../core/services/confirm-dialog.service
   `,
 })
 export class ApiAccessPageComponent implements OnInit {
-  private readonly ipc = inject(IpcService);
+  protected readonly ipc = inject(IpcService);
   private readonly confirmDialog = inject(ConfirmDialogService);
   private rawKey = '';
   protected readonly revealed = signal(false);
@@ -100,7 +107,7 @@ export class ApiAccessPageComponent implements OnInit {
   }
 
   protected curlExample(): string {
-    const k = this.rawKey || 'tf_live_xxxxxxxx';
+    const k = this.rawKey || LOCAL_DEV_REST_API_KEY_PLACEHOLDER;
     return `curl -X POST http://127.0.0.1:38474/v1/workflows/run \\
   -H "Authorization: Bearer ${k}" \\
   -H "Content-Type: application/json" \\
