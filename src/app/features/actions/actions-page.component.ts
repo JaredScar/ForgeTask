@@ -14,6 +14,8 @@ const BASIC: ActionItem[] = [
   { kind: 'open_file_folder', title: 'Open File/Folder', desc: 'Open in default program', icon: '📂', pro: false },
   { kind: 'dark_mode_toggle', title: 'Dark Mode Toggle', desc: 'Switch system theme', icon: '🌙', pro: false },
   { kind: 'audio_control', title: 'Audio Control', desc: 'Volume and mute', icon: '🔊', pro: false },
+  { kind: 'kill_process', title: 'Kill Process', desc: 'End a process by name or PID', icon: '⛔', pro: false },
+  { kind: 'file_operation', title: 'File Operation', desc: 'Copy, move, delete, or mkdir', icon: '📋', pro: false },
 ];
 
 const ADVANCED: ActionItem[] = [

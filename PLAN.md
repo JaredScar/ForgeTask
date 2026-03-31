@@ -1,6 +1,6 @@
 # TaskForge – Full Implementation Plan
 
-> Last updated: 2026-03-30 · *Partial implementation progress is reflected in §22 Phase 2–3 status columns where noted.*
+> Last updated: 2026-03-31 · *Partial implementation progress is reflected in §22 Phase 2–3 status columns where noted.*
 >
 > This plan maps every piece of dummy/hardcoded data and every incomplete feature in the app to concrete implementation tasks. Tasks are grouped by feature area and ordered by dependency. Each item lists the files involved and the acceptance criteria.
 >
@@ -1197,27 +1197,27 @@ Complete all partially-built features and add the missing interactions.
 | # | Task | Section | Status |
 |---|---|---|---|
 | 1 | **Pro/Enterprise entitlement system (license key)** | §20 | ✅ Done |
-| 2 | Node type picker UI in builder | §3.1 | Pending |
-| 3 | Per-node config forms (replace raw JSON) | §3.2 | Pending |
-| 4 | Cron expression helper | §3.5 | Pending |
-| 5 | Builder validation & error highlighting | §3.4 | Pending |
-| 6 | Variable interpolation in engine | §7.2 | Pending |
-| 7 | Implement `kill_process`, `file_operation`, `input_simulation` | §15.1 | Pending |
-| 8 | Implement `idle_trigger`, `device_trigger`, `memory_trigger` | §16.1 | Pending |
-| 9 | Add retry logic to engine | §15.2 | Pending |
-| 10 | Add workflow concurrency modes | §15.3 | Pending |
-| 11 | Add action output chaining / context | §17.1 | Pending |
+| 2 | Node type picker UI in builder | §3.1 | ✅ Done |
+| 3 | Per-node config forms (replace raw JSON) | §3.2 | ✅ Done (schemas + JSON toggle) |
+| 4 | Cron expression helper | §3.5 | ✅ Done |
+| 5 | Builder validation & error highlighting | §3.4 | ✅ Done |
+| 6 | Variable interpolation in engine | §7.2 | ✅ Done (`{{var}}` + `{{context.*}}`) |
+| 7 | Implement `kill_process`, `file_operation`, `input_simulation` | §15.1 | Partial — kill/file ✅; `input_simulation` needs native module (§15.1) |
+| 8 | Implement `idle_trigger`, `device_trigger`, `memory_trigger` | §16.1 | ✅ Done |
+| 9 | Add retry logic to engine | §15.2 | ✅ Done (`retryCount` / `retryDelayMs` on nodes) |
+| 10 | Add workflow concurrency modes | §15.3 | ✅ Done (`concurrency` on workflow) |
+| 11 | Add action output chaining / context | §17.1 | ✅ Done |
 | 12 | Expand marketplace to 12+ templates | §9.1 | ✅ Done |
-| 13 | Replace analytics DIV chart with Chart.js | §8.2 | Pending |
-| 14 | Analytics date range picker | §8.3 | Pending |
+| 13 | Replace analytics DIV chart with Chart.js | §8.2 | ✅ Done |
+| 14 | Analytics date range picker | §8.3 | ✅ Done |
 | 15 | Log filter persistence in URL | §6.3 | ✅ Done |
 | 16 | Log export (CSV/JSON) | §6.4 | ✅ Done (CSV) |
 | 17 | Triggers/Actions pages: usage counts + "use" buttons | §4.1, §5.1 | ✅ Done |
 | 18 | Duplicate workflow | §2.3 | ✅ Done |
-| 19 | Bulk workflow actions | §2.4 | Pending |
-| 20 | AI response card UI | §10.1 | Pending |
+| 19 | Bulk workflow actions | §2.4 | ✅ Done |
+| 20 | AI response card UI | §10.1 | ✅ Done |
 | 21 | AI streaming | §10.2 | Pending |
-| 22 | Expand API endpoints | §12.3 | Partial (GET workflows, logs) |
+| 22 | Expand API endpoints | §12.3 | ✅ Done (+ `GET /v1/variables`) |
 | 23 | IPC type safety | §19.1 | Pending |
 | 24 | IPC error handling | §19.2 | Pending |
 
@@ -1228,11 +1228,11 @@ The flagship visual canvas builder and advanced integrations.
 |---|---|---|
 | 1 | Visual graph canvas builder | §3.3 |
 | 2 | Real-time log step progress | §6.2 |
-| 3 | Workflow run history inline panel | §2.2 |
+| 3 | Workflow run history inline panel | §2.2 · ✅ Done (last run panel on workflow cards) |
 | 4 | AI conversation history | §10.3 |
 | 5 | Multiple API keys with scopes | §12.1, §12.2 |
 | 6 | Remote marketplace registry | §9.2 |
-| 7 | Marketplace "installed" state | §9.3 |
+| 7 | Marketplace "installed" state | §9.3 · ✅ Done (`source_template_id` + badge) |
 | 8 | Trigger state persistence + missed trigger replay | §16.2 |
 | 9 | Role-based UI (team permissions) | §11.3 |
 | 10 | Keyboard shortcuts | §21.5 |
