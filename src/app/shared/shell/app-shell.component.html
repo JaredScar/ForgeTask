@@ -7,6 +7,38 @@
   }
 </div>
 
+@if (showHotkeysLegend()) {
+  <div
+    class="fixed inset-0 z-[101] flex items-center justify-center bg-black/70 p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Keyboard shortcuts"
+    (click)="showHotkeysLegend.set(false)"
+  >
+    <div
+      class="w-full max-w-md rounded-xl border border-tf-border bg-tf-card p-6 shadow-xl"
+      (click)="$event.stopPropagation()"
+    >
+      <h2 class="text-lg font-semibold">Keyboard shortcuts</h2>
+      <p class="mt-1 text-xs text-tf-muted">Press <kbd class="rounded border border-tf-border px-1">?</kbd> to toggle this panel.</p>
+      <ul class="mt-4 space-y-2 text-sm text-neutral-300">
+        <li><kbd class="rounded border border-tf-border px-1">Ctrl/Cmd</kbd> + <kbd class="rounded border border-tf-border px-1">F</kbd> — Focus search</li>
+        <li><kbd class="rounded border border-tf-border px-1">Ctrl/Cmd</kbd> + <kbd class="rounded border border-tf-border px-1">N</kbd> — New workflow</li>
+        <li class="text-tf-muted">In Builder: <kbd class="rounded border border-tf-border px-1">Ctrl/Cmd</kbd> + <kbd class="rounded border border-tf-border px-1">S</kbd> — Save</li>
+        <li class="text-tf-muted"><kbd class="rounded border border-tf-border px-1">Ctrl/Cmd</kbd> + <kbd class="rounded border border-tf-border px-1">R</kbd> — Test run</li>
+        <li><kbd class="rounded border border-tf-border px-1">Esc</kbd> — Close dialogs / this panel</li>
+      </ul>
+      <button
+        type="button"
+        class="mt-6 w-full rounded-lg border border-tf-border py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+        (click)="showHotkeysLegend.set(false)"
+      >
+        Close
+      </button>
+    </div>
+  </div>
+}
+
 @if (confirmDialog.active(); as dlg) {
   <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
     <div class="w-full max-w-md rounded-xl border border-tf-border bg-tf-card p-6 shadow-xl" role="alertdialog" aria-modal="true">

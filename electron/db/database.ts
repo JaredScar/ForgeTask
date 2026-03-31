@@ -67,6 +67,47 @@ function runMigrations(db: InstanceType<typeof BetterSqlite3>): void {
     }
     db.prepare(`INSERT INTO schema_migrations (version, applied_at) VALUES (4, ?)`).run(now);
   }
+  if (maxVer() < 5) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        scopes TEXT NOT NULL DEFAULT '["*"]',
+        created_at TEXT NOT NULL,
+        is_primary INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS trigger_state (
+        workflow_id TEXT NOT NULL,
+        trigger_node_id TEXT NOT NULL,
+        last_fired_at TEXT NOT NULL,
+        PRIMARY KEY (workflow_id, trigger_node_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_api_keys_token ON api_keys(token);
+    `);
+    const cnt = (db.prepare(`SELECT COUNT(*) as c FROM api_keys`).get() as { c: number }).c;
+    if (cnt === 0) {
+      const tok = (db.prepare(`SELECT value FROM settings WHERE key = 'api_key'`).get() as { value: string } | undefined)?.value;
+      if (tok) {
+        db.prepare(
+          `INSERT INTO api_keys (id, name, token, scopes, created_at, is_primary) VALUES (?, 'Default', ?, '["*"]', ?, 1)`
+        ).run(randomUUID(), tok, now);
+      }
+    }
+    db.prepare(`INSERT INTO schema_migrations (version, applied_at) VALUES (5, ?)`).run(now);
+  }
+}
+
+/** Keep primary REST token mirrored in api_keys for scoped API access. */
+function ensureApiKeysSynced(db: InstanceType<typeof BetterSqlite3>): void {
+  const count = (db.prepare(`SELECT COUNT(*) as c FROM api_keys`).get() as { c: number }).c;
+  if (count > 0) return;
+  const tok = (db.prepare(`SELECT value FROM settings WHERE key = 'api_key'`).get() as { value: string } | undefined)?.value;
+  if (!tok) return;
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO api_keys (id, name, token, scopes, created_at, is_primary) VALUES (?, 'Default', ?, '["*"]', ?, 1)`
+  ).run(randomUUID(), tok, now);
 }
 
 /** API key, local user row, and default settings — safe to run on every startup. */
@@ -97,6 +138,8 @@ function ensureAppDefaults(db: InstanceType<typeof BetterSqlite3>): void {
   for (const [k, v] of defaults) {
     ins.run(k, v);
   }
+
+  ensureApiKeysSynced(db);
 }
 
 /** Copy legacy DB from pre-rename userData folders (same parent as current `userData`). */

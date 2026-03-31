@@ -51,6 +51,7 @@ export interface TaskForgeBridge {
     get: (id: string) => Promise<{ log: unknown; steps: unknown[] }>;
     clear: () => Promise<boolean>;
     export: () => Promise<string | null>;
+    onStepProgress: (cb: (step: Record<string, unknown>) => void) => () => void;
   };
   variables: {
     list: () => Promise<unknown[]>;
@@ -91,15 +92,35 @@ export interface TaskForgeBridge {
     invite: (payload: { email: string; display_name: string; role: string }) => Promise<string>;
     remove: (id: string) => Promise<boolean>;
   };
-  audit: { list: () => Promise<unknown[]>; export: () => Promise<string | null> };
-  api: { getKey: () => Promise<string>; regenerateKey: () => Promise<string> };
+  audit: {
+    list: (opts?: { action?: string; userId?: string; q?: string }) => Promise<unknown[]>;
+    export: () => Promise<string | null>;
+  };
+  api: {
+    getKey: () => Promise<string>;
+    regenerateKey: () => Promise<string>;
+    listKeys: () => Promise<Array<{ id: string; name: string; scopes: string[]; created_at: string; is_primary: boolean }>>;
+    createKey: (payload: { name: string; scopes: string[] }) => Promise<{ id: string; token: string }>;
+    revokeKey: (id: string) => Promise<boolean>;
+  };
   marketplace: {
     list: () => Promise<
       Array<{ id: string; title: string; author: string; description: string; pro: boolean; installedCount: number }>
     >;
     install: (id: string) => Promise<string | null>;
   };
-  ai: { parse: (prompt: string) => Promise<{ name: string; nodes: Array<Record<string, unknown>> }> };
+  ai: {
+    parse: (payload: string | { prompt: string; messages?: Array<{ role: string; content: string }> }) => Promise<{
+      name: string;
+      nodes: Array<Record<string, unknown>>;
+    }>;
+    parseStream: (payload: { prompt: string; messages?: Array<{ role: string; content: string }> }) => Promise<{
+      name: string;
+      nodes: Array<Record<string, unknown>>;
+    }>;
+    onStreamToken: (cb: (chunk: string) => void) => () => void;
+  };
+  data: { exportZip: () => Promise<string | null> };
   app: {
     getPaths: () => Promise<{ userData: string }>;
     getStats: () => Promise<{

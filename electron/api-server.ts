@@ -7,6 +7,39 @@ import type { TriggerManager } from './engine/trigger-manager';
 import { randomUUID } from 'node:crypto';
 import { isLocalDevRestApiPlaceholder } from './dev-placeholders';
 
+type ApiRequest = express.Request & { tfScopes?: string[] };
+
+const SCOPE_ALL = '*';
+const SCOPE_WORKFLOWS_READ = 'workflows:read';
+const SCOPE_WORKFLOWS_RUN = 'workflows:run';
+const SCOPE_LOGS_READ = 'logs:read';
+const SCOPE_VARIABLES_READ = 'variables:read';
+
+function parseScopesJson(raw: string): string[] {
+  try {
+    const j = JSON.parse(raw) as unknown;
+    return Array.isArray(j) ? j.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function hasScope(scopes: string[], required: string): boolean {
+  if (scopes.includes(SCOPE_ALL)) return true;
+  return scopes.includes(required);
+}
+
+function resolveBearerAuth(db: Database.Database, bearer: string): string[] | null {
+  const settingsKey = (db.prepare(`SELECT value FROM settings WHERE key = 'api_key'`).get() as { value: string } | undefined)?.value;
+  if (settingsKey && bearer === settingsKey) {
+    return [SCOPE_ALL];
+  }
+  const row = db.prepare(`SELECT scopes FROM api_keys WHERE token = ?`).get(bearer) as { scopes: string } | undefined;
+  if (!row) return null;
+  const scopes = parseScopesJson(row.scopes);
+  return scopes.length ? scopes : [SCOPE_ALL];
+}
+
 export function startApiServer(
   db: Database.Database,
   engine: AutomationEngine,
@@ -21,20 +54,34 @@ export function startApiServer(
     const auth = req.headers.authorization ?? '';
     const m = /^Bearer\s+(.+)$/i.exec(auth);
     const bearer = m?.[1]?.trim() ?? '';
-    /* Unpackaged dev only: well-known placeholder works for local curl/scripts. Packaged apps always require the real DB key. */
+    const r = req as ApiRequest;
+
     if (!electronApp.isPackaged && isLocalDevRestApiPlaceholder(bearer)) {
+      r.tfScopes = [SCOPE_ALL];
       next();
       return;
     }
-    const key = (db.prepare(`SELECT value FROM settings WHERE key = 'api_key'`).get() as { value: string } | undefined)?.value;
-    if (!key || auth !== `Bearer ${key}`) {
+
+    const scopes = resolveBearerAuth(db, bearer);
+    if (!scopes) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
+    r.tfScopes = scopes;
     next();
   });
 
-  app.get('/v1/workflows', (_req, res) => {
+  const need = (scope: string) => (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const r = req as ApiRequest;
+    const scopes = r.tfScopes ?? [];
+    if (!hasScope(scopes, scope)) {
+      res.status(403).json({ error: 'Forbidden', required_scope: scope });
+      return;
+    }
+    next();
+  };
+
+  app.get('/v1/workflows', need(SCOPE_WORKFLOWS_READ), (_req, res) => {
     const workflows = db
       .prepare(
         `SELECT id, name, description, enabled, priority, tags, draft, run_count, last_run_at, last_run_summary, created_at, updated_at FROM workflows ORDER BY updated_at DESC`
@@ -43,7 +90,7 @@ export function startApiServer(
     res.json({ workflows });
   });
 
-  app.get('/v1/workflows/:id', (req, res) => {
+  app.get('/v1/workflows/:id', need(SCOPE_WORKFLOWS_READ), (req, res) => {
     const id = req.params['id'];
     const wf = db.prepare(`SELECT * FROM workflows WHERE id = ?`).get(id);
     if (!wf) {
@@ -55,12 +102,12 @@ export function startApiServer(
     res.json({ workflow: wf, nodes, edges });
   });
 
-  app.get('/v1/logs', (_req, res) => {
+  app.get('/v1/logs', need(SCOPE_LOGS_READ), (_req, res) => {
     const logs = db.prepare(`SELECT * FROM execution_logs ORDER BY started_at DESC LIMIT 200`).all();
     res.json({ logs });
   });
 
-  app.get('/v1/logs/:id', (req, res) => {
+  app.get('/v1/logs/:id', need(SCOPE_LOGS_READ), (req, res) => {
     const id = req.params['id'];
     const log = db.prepare(`SELECT * FROM execution_logs WHERE id = ?`).get(id);
     if (!log) {
@@ -71,14 +118,14 @@ export function startApiServer(
     res.json({ log, steps });
   });
 
-  app.get('/v1/variables', (_req, res) => {
+  app.get('/v1/variables', need(SCOPE_VARIABLES_READ), (_req, res) => {
     const rows = db
       .prepare(`SELECT id, name, type, value, scope FROM variables WHERE is_secret = 0 ORDER BY name`)
       .all();
     res.json({ variables: rows });
   });
 
-  app.post('/v1/workflows/run', async (req, res) => {
+  app.post('/v1/workflows/run', need(SCOPE_WORKFLOWS_RUN), async (req, res) => {
     const workflowId = (req.body as { workflow_id?: string })?.workflow_id;
     if (!workflowId) {
       res.status(400).json({ error: 'workflow_id required' });

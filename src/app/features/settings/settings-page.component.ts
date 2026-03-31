@@ -131,6 +131,20 @@ import { ToastService } from '../../core/services/toast.service';
           <p class="mt-2 text-xs text-tf-green">Preferences saved.</p>
         }
       </div>
+
+      <div class="rounded-xl border border-tf-border bg-tf-card p-4">
+        <h2 class="text-sm font-medium">Data export</h2>
+        <p class="mt-1 text-xs text-tf-muted">
+          Save workflows, graph, variables, and non-secret settings to a ZIP file on this computer (JSON inside). Useful for backups before major changes.
+        </p>
+        <button
+          type="button"
+          (click)="exportZip()"
+          class="mt-3 rounded-lg border border-tf-border px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+        >
+          Export data as ZIP…
+        </button>
+      </div>
     </div>
   `,
 })
@@ -227,5 +241,15 @@ export class SettingsPageComponent implements OnInit {
     this.savedPrefs.set(true);
     this.toast.success('Preferences saved');
     setTimeout(() => this.savedPrefs.set(false), 2000);
+  }
+
+  async exportZip(): Promise<void> {
+    try {
+      const path = await this.ipc.api.data.exportZip();
+      if (path) this.toast.success(`Exported to ${path}`);
+      else this.toast.info('Export cancelled');
+    } catch {
+      this.toast.error('Could not export data');
+    }
   }
 }

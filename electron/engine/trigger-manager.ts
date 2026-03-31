@@ -67,6 +67,7 @@ export class TriggerManager {
           const cron = String(config['cron'] ?? '0 9 * * *');
           const job = schedule.scheduleJob(cron, () => {
             void this.engine.runWorkflow(r.workflow_id, 'time_schedule');
+            this.recordTriggerFire(r.workflow_id, r.node_id);
           });
           if (job) this.jobs.set(key, job);
           break;
@@ -100,6 +101,16 @@ export class TriggerManager {
       }
     }
     this.engineReady = true;
+  }
+
+  private recordTriggerFire(workflowId: string, triggerNodeId: string): void {
+    try {
+      this.db
+        .prepare(`INSERT OR REPLACE INTO trigger_state (workflow_id, trigger_node_id, last_fired_at) VALUES (?, ?, ?)`)
+        .run(workflowId, triggerNodeId, new Date().toISOString());
+    } catch {
+      /* older DB without trigger_state */
+    }
   }
 
   private ensurePollLoop(): void {

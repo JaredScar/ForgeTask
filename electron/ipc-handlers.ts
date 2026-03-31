@@ -1,11 +1,21 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
+import { ipcHandle } from './ipc-handle';
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { AutomationEngine } from './engine/automation-engine';
 import type { TriggerManager } from './engine/trigger-manager';
-import { MARKETPLACE_ITEMS } from './marketplace-data';
+import archiver from 'archiver';
+import { createWriteStream } from 'node:fs';
+import { findMarketplaceTemplate, resolveMarketplaceCatalog } from './marketplace-remote';
+import {
+  buildWorkflowParseMessages,
+  completeWorkflowJson,
+  parseWorkflowFromModelText,
+  streamWorkflowCompletion,
+  type AiChatMsg,
+} from './ai-workflow';
 import { writeAuditLog } from './db/audit';
 import { defaultActionConfig, defaultConditionConfig, defaultTriggerConfig, stubTimeTriggerConfig } from './catalog-starters';
 import {
@@ -27,13 +37,22 @@ import {
 import * as si from 'systeminformation';
 import { isLocalDevOpenAiPlaceholder } from './dev-placeholders';
 
+function parseScopesJsonSafe(raw: string): string[] {
+  try {
+    const j = JSON.parse(raw) as unknown;
+    return Array.isArray(j) ? j.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 export function registerIpcHandlers(
   db: Database.Database,
   engine: AutomationEngine,
   triggers: TriggerManager,
   getWin: () => BrowserWindow | null
 ): void {
-  ipcMain.handle('entitlement:getStatus', () => {
+  ipcHandle('entitlement:getStatus', () => {
     const url = getLicenseApiUrl();
     const mode = getLicenseMode();
     return {
@@ -43,12 +62,12 @@ export function registerIpcHandlers(
     };
   });
 
-  ipcMain.handle('entitlement:refreshOnline', async () => {
+  ipcHandle('entitlement:refreshOnline', async () => {
     const r = await refreshLicenseOnline(db);
     return { ok: r.ok, unlocked: isProEnterpriseUnlocked(db), error: r.error };
   });
 
-  ipcMain.handle('entitlement:setKey', async (_e, key: string) => {
+  ipcHandle('entitlement:setKey', async (_e, key: string) => {
     const trimmed = String(key ?? '').trim();
     const url = getLicenseApiUrl();
     const mode = getLicenseMode();
@@ -99,11 +118,11 @@ export function registerIpcHandlers(
     return { ok: true as const, unlocked: true as const };
   });
 
-  ipcMain.handle('workflows:list', () => {
+  ipcHandle('workflows:list', () => {
     return db.prepare(`SELECT * FROM workflows ORDER BY updated_at DESC`).all();
   });
 
-  ipcMain.handle('workflows:get', (_e, id: string) => {
+  ipcHandle('workflows:get', (_e, id: string) => {
     const wf = db.prepare(`SELECT * FROM workflows WHERE id = ?`).get(id);
     if (!wf) return null;
     const nodes = db.prepare(`SELECT * FROM workflow_nodes WHERE workflow_id = ? ORDER BY sort_order`).all(id);
@@ -111,7 +130,7 @@ export function registerIpcHandlers(
     return { workflow: wf, nodes, edges };
   });
 
-  ipcMain.handle('workflows:create', (_e, payload: { name: string; description?: string }) => {
+  ipcHandle('workflows:create', (_e, payload: { name: string; description?: string }) => {
     const id = randomUUID();
     const now = new Date().toISOString();
     db.prepare(
@@ -123,7 +142,7 @@ export function registerIpcHandlers(
     return id;
   });
 
-  ipcMain.handle(
+  ipcHandle(
     'workflows:update',
     (_e, payload: { id: string; name?: string; description?: string; priority?: string; tags?: string[]; draft?: boolean; concurrency?: string; nodes?: unknown[]; edges?: unknown[] }) => {
       const now = new Date().toISOString();
@@ -183,14 +202,14 @@ export function registerIpcHandlers(
     }
   );
 
-  ipcMain.handle('workflows:delete', (_e, id: string) => {
+  ipcHandle('workflows:delete', (_e, id: string) => {
     db.prepare(`DELETE FROM workflows WHERE id = ?`).run(id);
     writeAuditLog(db, 'workflow.delete', id);
     triggers.reloadFromDatabase();
     return true;
   });
 
-  ipcMain.handle('workflows:toggle', (_e, id: string) => {
+  ipcHandle('workflows:toggle', (_e, id: string) => {
     const row = db.prepare(`SELECT enabled FROM workflows WHERE id = ?`).get(id) as { enabled: number } | undefined;
     if (!row) return false;
     const next = row.enabled ? 0 : 1;
@@ -200,7 +219,7 @@ export function registerIpcHandlers(
     return next === 1;
   });
 
-  ipcMain.handle('workflows:setEnabled', (_e, payload: { id: string; enabled: boolean }) => {
+  ipcHandle('workflows:setEnabled', (_e, payload: { id: string; enabled: boolean }) => {
     const wf = db.prepare(`SELECT id FROM workflows WHERE id = ?`).get(payload.id);
     if (!wf) return false;
     const en = payload.enabled ? 1 : 0;
@@ -210,7 +229,7 @@ export function registerIpcHandlers(
     return true;
   });
 
-  ipcMain.handle('workflows:duplicate', (_e, sourceId: string) => {
+  ipcHandle('workflows:duplicate', (_e, sourceId: string) => {
     const wf = db.prepare(`SELECT * FROM workflows WHERE id = ?`).get(sourceId) as Record<string, unknown> | undefined;
     if (!wf) return '';
     const newId = randomUUID();
@@ -268,14 +287,14 @@ export function registerIpcHandlers(
     return newId;
   });
 
-  ipcMain.handle('catalog:usageByKind', (_e, nodeType: 'trigger' | 'action') => {
+  ipcHandle('catalog:usageByKind', (_e, nodeType: 'trigger' | 'action') => {
     const rows = db
       .prepare(`SELECT kind, COUNT(*) as c FROM workflow_nodes WHERE node_type = ? GROUP BY kind`)
       .all(nodeType) as { kind: string; c: number }[];
     return rows.map((r) => ({ kind: r.kind, count: r.c }));
   });
 
-  ipcMain.handle(
+  ipcHandle(
     'workflows:createFromStarter',
     (_e, payload: { mode: 'trigger' | 'action'; kind: string; displayTitle: string }) => {
       const needsPro =
@@ -308,7 +327,7 @@ export function registerIpcHandlers(
     }
   );
 
-  ipcMain.handle(
+  ipcHandle(
     'workflows:appendNode',
     (_e, payload: { workflowId: string; nodeType: 'trigger' | 'condition' | 'action'; kind: string }) => {
       const needsPro =
@@ -335,7 +354,7 @@ export function registerIpcHandlers(
     }
   );
 
-  ipcMain.handle('logs:list', (_e, opts?: { limit?: number; workflowId?: string }) => {
+  ipcHandle('logs:list', (_e, opts?: { limit?: number; workflowId?: string }) => {
     const lim = opts?.limit ?? 200;
     const wf = opts?.workflowId?.trim();
     if (wf) {
@@ -346,20 +365,20 @@ export function registerIpcHandlers(
     return db.prepare(`SELECT * FROM execution_logs ORDER BY started_at DESC LIMIT ?`).all(lim);
   });
 
-  ipcMain.handle('logs:get', (_e, id: string) => {
+  ipcHandle('logs:get', (_e, id: string) => {
     const log = db.prepare(`SELECT * FROM execution_logs WHERE id = ?`).get(id);
     const steps = db.prepare(`SELECT * FROM log_steps WHERE log_id = ? ORDER BY rowid`).all(id);
     return { log, steps };
   });
 
-  ipcMain.handle('logs:clear', () => {
+  ipcHandle('logs:clear', () => {
     db.prepare(`DELETE FROM log_steps`).run();
     db.prepare(`DELETE FROM execution_logs`).run();
     writeAuditLog(db, 'logs.clear', 'all');
     return true;
   });
 
-  ipcMain.handle('logs:export', async () => {
+  ipcHandle('logs:export', async () => {
     const win = getWin();
     const rows = db
       .prepare(
@@ -399,12 +418,12 @@ export function registerIpcHandlers(
     return filePath;
   });
 
-  ipcMain.handle('variables:list', () => {
+  ipcHandle('variables:list', () => {
     if (!isProEnterpriseUnlocked(db)) return [];
     return db.prepare(`SELECT * FROM variables ORDER BY name`).all();
   });
 
-  ipcMain.handle(
+  ipcHandle(
     'variables:create',
     (_e, v: { name: string; type: string; value: string; is_secret?: boolean; scope?: string }) => {
       assertProEnterprise(db);
@@ -421,7 +440,7 @@ export function registerIpcHandlers(
     }
   );
 
-  ipcMain.handle('variables:update', (_e, v: { id: string; name?: string; type?: string; value?: string; is_secret?: boolean }) => {
+  ipcHandle('variables:update', (_e, v: { id: string; name?: string; type?: string; value?: string; is_secret?: boolean }) => {
     assertProEnterprise(db);
     db.prepare(
       `UPDATE variables SET name = COALESCE(?, name), type = COALESCE(?, type), value = COALESCE(?, value), is_secret = COALESCE(?, is_secret) WHERE id = ?`
@@ -430,14 +449,14 @@ export function registerIpcHandlers(
     return true;
   });
 
-  ipcMain.handle('variables:delete', (_e, id: string) => {
+  ipcHandle('variables:delete', (_e, id: string) => {
     assertProEnterprise(db);
     db.prepare(`DELETE FROM variables WHERE id = ?`).run(id);
     writeAuditLog(db, 'variable.delete', id);
     return true;
   });
 
-  ipcMain.handle('analytics:summary', (_e, opts?: { rangeDays?: number }) => {
+  ipcHandle('analytics:summary', (_e, opts?: { rangeDays?: number }) => {
     if (!isProEnterpriseUnlocked(db)) {
       return {
         totalRuns: 0,
@@ -562,7 +581,7 @@ export function registerIpcHandlers(
     };
   });
 
-  ipcMain.handle('analytics:runsByWorkflow', (_e, opts?: { rangeDays?: number }) => {
+  ipcHandle('analytics:runsByWorkflow', (_e, opts?: { rangeDays?: number }) => {
     if (!isProEnterpriseUnlocked(db)) return [];
     const nd = Math.min(365, Math.max(1, Math.floor(opts?.rangeDays ?? 7)));
     const clause = `datetime(e.started_at) >= datetime('now', '-${nd} days')`;
@@ -578,7 +597,7 @@ export function registerIpcHandlers(
       .all();
   });
 
-  ipcMain.handle('analytics:runsTimeSeries', (_e, opts?: { rangeDays?: number }) => {
+  ipcHandle('analytics:runsTimeSeries', (_e, opts?: { rangeDays?: number }) => {
     if (!isProEnterpriseUnlocked(db)) return [];
     const nd = Math.min(365, Math.max(1, Math.floor(opts?.rangeDays ?? 30)));
     return db
@@ -592,7 +611,7 @@ export function registerIpcHandlers(
       .all();
   });
 
-  ipcMain.handle('analytics:systemHealth', async () => {
+  ipcHandle('analytics:systemHealth', async () => {
     if (!isProEnterpriseUnlocked(db)) return { cpu: 0, memory: 0, queue: 0, storageGb: 0 };
     try {
       const load = await si.currentLoad();
@@ -611,33 +630,33 @@ export function registerIpcHandlers(
     }
   });
 
-  ipcMain.handle('engine:runWorkflow', async (_e, workflowId: string) => {
+  ipcHandle('engine:runWorkflow', async (_e, workflowId: string) => {
     await engine.runWorkflow(workflowId, 'manual');
     writeAuditLog(db, 'workflow.run', workflowId);
     return true;
   });
 
-  ipcMain.handle('engine:stopWorkflow', () => true);
+  ipcHandle('engine:stopWorkflow', () => true);
 
-  ipcMain.handle('engine:getStatus', () => ({ running: triggers.isEngineReady() }));
+  ipcHandle('engine:getStatus', () => ({ running: triggers.isEngineReady() }));
 
-  ipcMain.handle('settings:get', (_e, key: string) => {
+  ipcHandle('settings:get', (_e, key: string) => {
     const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
     return row?.value ?? null;
   });
 
-  ipcMain.handle('settings:set', (_e, payload: { key: string; value: string }) => {
+  ipcHandle('settings:set', (_e, payload: { key: string; value: string }) => {
     db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(payload.key, payload.value);
     writeAuditLog(db, 'settings.set', payload.key);
     return true;
   });
 
-  ipcMain.handle('team:list', () => {
+  ipcHandle('team:list', () => {
     if (!isProEnterpriseUnlocked(db)) return [];
     return db.prepare(`SELECT * FROM team_members ORDER BY is_self DESC, display_name`).all();
   });
 
-  ipcMain.handle(
+  ipcHandle(
     'team:invite',
     (_e, payload: { email: string; display_name: string; role: string }) => {
       assertProEnterprise(db);
@@ -650,7 +669,7 @@ export function registerIpcHandlers(
     }
   );
 
-  ipcMain.handle('team:remove', (_e, id: string) => {
+  ipcHandle('team:remove', (_e, id: string) => {
     assertProEnterprise(db);
     const row = db.prepare(`SELECT is_self FROM team_members WHERE id = ?`).get(id) as { is_self: number } | undefined;
     if (!row || row.is_self) return false;
@@ -659,12 +678,28 @@ export function registerIpcHandlers(
     return true;
   });
 
-  ipcMain.handle('audit:list', () => {
+  ipcHandle('audit:list', (_e, opts?: { action?: string; userId?: string; q?: string }) => {
     if (!isProEnterpriseUnlocked(db)) return [];
-    return db.prepare(`SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 500`).all();
+    let sql = `SELECT * FROM audit_logs WHERE 1=1`;
+    const args: unknown[] = [];
+    if (opts?.action?.trim()) {
+      sql += ` AND action LIKE ?`;
+      args.push(`%${opts.action.trim()}%`);
+    }
+    if (opts?.userId?.trim()) {
+      sql += ` AND user_id LIKE ?`;
+      args.push(`%${opts.userId.trim()}%`);
+    }
+    if (opts?.q?.trim()) {
+      sql += ` AND (resource LIKE ? OR action LIKE ? OR user_id LIKE ?)`;
+      const qq = `%${opts.q.trim()}%`;
+      args.push(qq, qq, qq);
+    }
+    sql += ` ORDER BY created_at DESC LIMIT 500`;
+    return db.prepare(sql).all(...args);
   });
 
-  ipcMain.handle('audit:export', async () => {
+  ipcHandle('audit:export', async () => {
     assertProEnterprise(db);
     const win = getWin();
     const rows = db.prepare(`SELECT * FROM audit_logs ORDER BY created_at DESC`).all();
@@ -686,29 +721,80 @@ export function registerIpcHandlers(
     return filePath;
   });
 
-  ipcMain.handle('api:getKey', () => {
+  ipcHandle('api:getKey', () => {
     if (!isProEnterpriseUnlocked(db)) return '';
-    const row = db.prepare(`SELECT value FROM settings WHERE key = 'api_key'`).get() as { value: string } | undefined;
-    return row?.value ?? '';
+    const row = db.prepare(`SELECT token FROM api_keys WHERE is_primary = 1 LIMIT 1`).get() as { token: string } | undefined;
+    if (row?.token) return row.token;
+    const fallback = db.prepare(`SELECT value FROM settings WHERE key = 'api_key'`).get() as { value: string } | undefined;
+    return fallback?.value ?? '';
   });
 
-  ipcMain.handle('api:regenerateKey', () => {
+  ipcHandle('api:regenerateKey', () => {
     assertProEnterprise(db);
     const key = 'tf_live_' + randomUUID().replace(/-/g, '').slice(0, 24);
+    const upd = db.prepare(`UPDATE api_keys SET token = ? WHERE is_primary = 1`).run(key);
+    if (upd.changes === 0) {
+      const now = new Date().toISOString();
+      db.prepare(
+        `INSERT INTO api_keys (id, name, token, scopes, created_at, is_primary) VALUES (?, 'Default', ?, '["*"]', ?, 1)`
+      ).run(randomUUID(), key, now);
+    }
     db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('api_key', ?)`).run(key);
     writeAuditLog(db, 'api.regenerate_key', 'api_key');
     return key;
   });
 
-  ipcMain.handle('marketplace:list', () => {
+  ipcHandle('api:listKeys', () => {
+    assertProEnterprise(db);
+    const rows = db
+      .prepare(`SELECT id, name, scopes, created_at, is_primary FROM api_keys ORDER BY is_primary DESC, created_at ASC`)
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: String(r['id']),
+      name: String(r['name']),
+      scopes: parseScopesJsonSafe(String(r['scopes'] ?? '[]')),
+      created_at: String(r['created_at']),
+      is_primary: Boolean(r['is_primary']),
+    }));
+  });
+
+  ipcHandle('api:createKey', (_e, payload: { name: string; scopes: string[] }) => {
+    assertProEnterprise(db);
+    const name = String(payload?.name ?? 'API key').trim() || 'API key';
+    const scopes = Array.isArray(payload?.scopes) && payload.scopes.length ? payload.scopes : ['*'];
+    const token = 'tf_live_' + randomUUID().replace(/-/g, '').slice(0, 24);
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO api_keys (id, name, token, scopes, created_at, is_primary) VALUES (?, ?, ?, ?, ?, 0)`).run(
+      id,
+      name,
+      token,
+      JSON.stringify(scopes),
+      now
+    );
+    writeAuditLog(db, 'api.create_key', id);
+    return { id, token };
+  });
+
+  ipcHandle('api:revokeKey', (_e, keyId: string) => {
+    assertProEnterprise(db);
+    const row = db.prepare(`SELECT is_primary FROM api_keys WHERE id = ?`).get(keyId) as { is_primary: number } | undefined;
+    if (!row || row.is_primary) return false;
+    db.prepare(`DELETE FROM api_keys WHERE id = ?`).run(keyId);
+    writeAuditLog(db, 'api.revoke_key', keyId);
+    return true;
+  });
+
+  ipcHandle('marketplace:list', async () => {
     if (!isProEnterpriseUnlocked(db)) return [];
+    const catalog = await resolveMarketplaceCatalog(db);
     const installed = db
       .prepare(
         `SELECT source_template_id as id, COUNT(*) as c FROM workflows WHERE source_template_id IS NOT NULL GROUP BY source_template_id`
       )
       .all() as { id: string; c: number }[];
     const map = new Map(installed.map((r) => [r.id, r.c]));
-    return MARKETPLACE_ITEMS.map(({ id, title, author, description, pro }) => ({
+    return catalog.map(({ id, title, author, description, pro }) => ({
       id,
       title,
       author,
@@ -718,9 +804,10 @@ export function registerIpcHandlers(
     }));
   });
 
-  ipcMain.handle('marketplace:install', (_e, templateId: string) => {
+  ipcHandle('marketplace:install', async (_e, templateId: string) => {
     assertProEnterprise(db);
-    const item = MARKETPLACE_ITEMS.find((m) => m.id === templateId);
+    const catalog = await resolveMarketplaceCatalog(db);
+    const item = findMarketplaceTemplate(catalog, templateId);
     if (!item) return null;
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -740,46 +827,89 @@ export function registerIpcHandlers(
     return id;
   });
 
-  ipcMain.handle('ai:parse', async (_e, prompt: string) => {
+  ipcHandle(
+    'ai:parse',
+    async (_e, payload: string | { prompt: string; messages?: AiChatMsg[] }) => {
+      assertProEnterprise(db);
+      const prompt = typeof payload === 'string' ? payload : String(payload?.prompt ?? '');
+      const history = typeof payload === 'object' && payload && Array.isArray(payload.messages) ? payload.messages : undefined;
+      const messages = buildWorkflowParseMessages(prompt, history);
+      const apiKey = (db.prepare(`SELECT value FROM settings WHERE key = 'openai_api_key'`).get() as { value: string } | undefined)?.value;
+      if (!apiKey || isLocalDevOpenAiPlaceholder(apiKey)) {
+        return heuristicWorkflowFromPrompt(prompt);
+      }
+      try {
+        const json = await completeWorkflowJson(apiKey, messages);
+        return json;
+      } catch {
+        return heuristicWorkflowFromPrompt(prompt);
+      }
+    }
+  );
+
+  ipcHandle('ai:parseStream', async (_e, payload: { prompt: string; messages?: AiChatMsg[] }) => {
     assertProEnterprise(db);
+    const win = getWin();
+    const send = (chunk: string) => win?.webContents.send('ai:streamToken', chunk);
+    const prompt = String(payload?.prompt ?? '');
     const apiKey = (db.prepare(`SELECT value FROM settings WHERE key = 'openai_api_key'`).get() as { value: string } | undefined)?.value;
     if (!apiKey || isLocalDevOpenAiPlaceholder(apiKey)) {
-      return heuristicWorkflowFromPrompt(prompt);
+      const h = heuristicWorkflowFromPrompt(prompt);
+      send(JSON.stringify(h));
+      return h;
     }
+    const messages = buildWorkflowParseMessages(prompt, payload?.messages);
     try {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content:
-                'You output only valid JSON for a workflow: {"name":string,"nodes":[{"node_type":"trigger"|"condition"|"action","kind":string,"config":object,"sort_order":number}]}. Use kinds: time_schedule, wifi_network, open_application, show_notification, device_connected. No markdown.',
-            },
-            { role: 'user', content: prompt },
-          ],
-          temperature: 0.2,
-        }),
-      });
-      const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-      const text = data.choices?.[0]?.message?.content?.trim() ?? '';
-      const json = JSON.parse(text.replace(/^```json\s*|\s*```$/g, ''));
-      return json;
+      const full = await streamWorkflowCompletion(apiKey, messages, (c) => send(c));
+      try {
+        return parseWorkflowFromModelText(full) as Record<string, unknown>;
+      } catch {
+        return heuristicWorkflowFromPrompt(prompt);
+      }
     } catch {
       return heuristicWorkflowFromPrompt(prompt);
     }
   });
 
-  ipcMain.handle('app:getPaths', () => ({
+  ipcHandle('data:exportZip', async () => {
+    const win = getWin();
+    const dlgOpts = {
+      defaultPath: 'taskforge-export.zip',
+      filters: [{ name: 'ZIP', extensions: ['zip'] }],
+    };
+    const { filePath } = win ? await dialog.showSaveDialog(win, dlgOpts) : await dialog.showSaveDialog(dlgOpts);
+    if (!filePath) return null;
+
+    const exportPayload = {
+      exported_at: new Date().toISOString(),
+      workflows: db.prepare(`SELECT * FROM workflows`).all(),
+      workflow_nodes: db.prepare(`SELECT * FROM workflow_nodes`).all(),
+      workflow_edges: db.prepare(`SELECT * FROM workflow_edges`).all(),
+      variables: db.prepare(`SELECT * FROM variables`).all(),
+      settings: db
+        .prepare(
+          `SELECT key, value FROM settings WHERE key NOT IN ('openai_api_key', 'pro_entitlement_key', 'api_key', 'marketplace_cache_json')`
+        )
+        .all(),
+    };
+
+    await new Promise<void>((resolve, reject) => {
+      const output = createWriteStream(filePath);
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      output.on('close', () => resolve());
+      archive.on('error', (err: Error) => reject(err));
+      archive.pipe(output);
+      archive.append(JSON.stringify(exportPayload, null, 2), { name: 'taskforge-data.json' });
+      void archive.finalize();
+    });
+    return filePath;
+  });
+
+  ipcHandle('app:getPaths', () => ({
     userData: app.getPath('userData'),
   }));
 
-  ipcMain.handle('app:getStats', async () => {
+  ipcHandle('app:getStats', async () => {
     const active = (db.prepare(`SELECT COUNT(*) as c FROM workflows WHERE enabled = 1`).get() as { c: number }).c;
     const pending = (db.prepare(`SELECT COUNT(*) as c FROM execution_logs WHERE status = 'running'`).get() as { c: number }).c;
     const triggerCount = (db.prepare(`SELECT COUNT(*) as c FROM workflow_nodes WHERE node_type = 'trigger'`).get() as { c: number }).c;

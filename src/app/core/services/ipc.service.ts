@@ -139,6 +139,7 @@ export class IpcService {
         get: async () => ({ log: null, steps: [] }),
         clear: async () => true,
         export: async () => null,
+        onStepProgress: () => () => undefined,
       },
       variables: { list: async () => [], create: async () => true, update: async () => true, delete: async () => true },
       analytics: {
@@ -180,20 +181,48 @@ export class IpcService {
         invite: async () => crypto.randomUUID(),
         remove: async () => true,
       },
-      audit: { list: async () => [], export: async () => null },
+      audit: {
+        list: async (_opts?: { action?: string; userId?: string; q?: string }) => [],
+        export: async () => null,
+      },
       api: {
         getKey: async () => LOCAL_DEV_REST_API_KEY_PLACEHOLDER,
         regenerateKey: async () => LOCAL_DEV_REST_API_KEY_PLACEHOLDER,
+        listKeys: async () => [
+          {
+            id: 'mock-primary',
+            name: 'Default',
+            scopes: ['*'],
+            created_at: new Date().toISOString(),
+            is_primary: true,
+          },
+        ],
+        createKey: async () => ({ id: crypto.randomUUID(), token: LOCAL_DEV_REST_API_KEY_PLACEHOLDER }),
+        revokeKey: async () => true,
       },
       marketplace: {
         list: async () => MOCK_MARKETPLACE_LIST.map((m) => ({ ...m, installedCount: 0 })),
         install: async () => null,
       },
       ai: {
-        parse: async (prompt) => ({
-          name: (prompt.trim().slice(0, 56) || 'Untitled draft').replace(/\s+$/, ''),
-          nodes: [],
-        }),
+        parse: async (payload) => {
+          const prompt = typeof payload === 'string' ? payload : payload.prompt;
+          return {
+            name: (prompt.trim().slice(0, 56) || 'Untitled draft').replace(/\s+$/, ''),
+            nodes: [],
+          };
+        },
+        parseStream: async (payload) => {
+          const prompt = payload.prompt;
+          return {
+            name: (prompt.trim().slice(0, 56) || 'Untitled draft').replace(/\s+$/, ''),
+            nodes: [],
+          };
+        },
+        onStreamToken: () => () => undefined,
+      },
+      data: {
+        exportZip: async () => null,
       },
       app: {
         getPaths: async () => ({ userData: '' }),

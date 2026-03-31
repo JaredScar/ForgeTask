@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { proEntitlementGuard } from './core/guards/pro-entitlement.guard';
+import { viewerBlockGuard } from './core/guards/viewer-block.guard';
 import { AppShellComponent } from './shared/shell/app-shell.component';
 
 export const routes: Routes = [
@@ -18,6 +19,7 @@ export const routes: Routes = [
       },
       {
         path: 'builder/:id',
+        canActivate: [viewerBlockGuard],
         loadComponent: () => import('./features/builder/builder-page.component').then((m) => m.BuilderPageComponent),
       },
       {

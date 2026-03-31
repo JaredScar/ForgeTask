@@ -7,6 +7,17 @@ import { loadVariableMap } from './variable-interpolation';
 
 export type WorkflowRunNotify = (payload: { logId: string; workflowId: string }) => void;
 
+export type StepProgressPayload = {
+  logId: string;
+  workflowId: string;
+  stepIndex: number;
+  stepType: string;
+  stepKind: string;
+  status: string;
+  message: string;
+  error?: string;
+};
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -14,10 +25,12 @@ function sleep(ms: number): Promise<void> {
 export class AutomationEngine {
   private readonly running = new Set<string>();
   private readonly pending = new Map<string, Array<{ triggerKind?: string }>>();
+  private runStepIndex = 0;
 
   constructor(
     private readonly db: Database.Database,
-    private readonly notifyRenderer?: WorkflowRunNotify
+    private readonly notifyRenderer?: WorkflowRunNotify,
+    private readonly notifyStepProgress?: (payload: StepProgressPayload) => void
   ) {}
 
   private getConcurrency(workflowId: string): 'allow' | 'queue' | 'skip' {
@@ -72,6 +85,7 @@ export class AutomationEngine {
   }
 
   private async executeWorkflowRun(workflowId: string, triggerKind?: string): Promise<string> {
+    this.runStepIndex = 0;
     const logId = randomUUID();
     const started = new Date().toISOString();
     this.db
@@ -95,7 +109,7 @@ export class AutomationEngine {
     try {
       for (const node of nodes) {
         if (node.node_type === 'trigger') {
-          this.insertStep(logId, node, 'success', 0, 'Trigger fired', undefined, undefined);
+          this.insertStep(logId, workflowId, node, 'success', 0, 'Trigger fired', undefined, undefined);
           continue;
         }
         if (node.node_type === 'condition') {
@@ -105,10 +119,10 @@ export class AutomationEngine {
           if (!r.ok) {
             finalStatus = 'skipped';
             lastError = r.reason;
-            this.insertStep(logId, node, 'failure', dur, 'Condition failed', r.reason, undefined);
+            this.insertStep(logId, workflowId, node, 'failure', dur, 'Condition failed', r.reason, undefined);
             break;
           }
-          this.insertStep(logId, node, 'success', dur, 'Condition passed', undefined, undefined);
+          this.insertStep(logId, workflowId, node, 'success', dur, 'Condition passed', undefined, undefined);
           continue;
         }
         if (node.node_type === 'action') {
@@ -125,12 +139,12 @@ export class AutomationEngine {
           let attempts = 0;
           while (ar.status === 'failure' && attempts < maxRetries) {
             attempts++;
-            this.insertStep(logId, node, 'retrying', 0, `Retry ${attempts}/${maxRetries}`, ar.error, undefined);
+            this.insertStep(logId, workflowId, node, 'retrying', 0, `Retry ${attempts}/${maxRetries}`, ar.error, undefined);
             if (retryDelayMs > 0) await sleep(retryDelayMs);
             ar = await executeActionNode(node, vars, context);
           }
 
-          this.insertStep(logId, node, ar.status, ar.durationMs, ar.message, ar.error, ar.output);
+          this.insertStep(logId, workflowId, node, ar.status, ar.durationMs, ar.message, ar.error, ar.output);
           if (ar.status === 'failure') {
             finalStatus = 'failure';
             lastError = ar.error;
@@ -185,6 +199,7 @@ export class AutomationEngine {
 
   private insertStep(
     logId: string,
+    workflowId: string,
     node: WorkflowNodeRow,
     status: string,
     durationMs: number,
@@ -192,10 +207,21 @@ export class AutomationEngine {
     error?: string,
     output?: string
   ): void {
+    const stepIndex = this.runStepIndex++;
     this.db
       .prepare(
         `INSERT INTO log_steps (id, log_id, step_type, step_kind, status, duration_ms, message, error, output) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(randomUUID(), logId, node.node_type, node.kind, status, durationMs, message, error ?? null, output ?? null);
+    this.notifyStepProgress?.({
+      logId,
+      workflowId,
+      stepIndex,
+      stepType: node.node_type,
+      stepKind: node.kind,
+      status,
+      message,
+      error,
+    });
   }
 }

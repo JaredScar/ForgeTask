@@ -24,6 +24,8 @@ export class AppShellComponent implements OnInit, OnDestroy {
   protected readonly wfCount = signal(0);
   protected readonly proUnlocked = signal(false);
   protected readonly selfMember = signal<{ display_name: string; role: string } | null>(null);
+  protected readonly isViewerRole = signal(false);
+  protected readonly showHotkeysLegend = signal(false);
   protected readonly stats = signal({
     active: 0,
     queue: 0,
@@ -49,13 +51,28 @@ export class AppShellComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   protected onGlobalKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Escape' && this.confirmDialog.active()) {
-      this.confirmDialog.respond(false);
-      e.preventDefault();
-      return;
+    if (e.key === 'Escape') {
+      if (this.showHotkeysLegend()) {
+        this.showHotkeysLegend.set(false);
+        e.preventDefault();
+        return;
+      }
+      if (this.confirmDialog.active()) {
+        this.confirmDialog.respond(false);
+        e.preventDefault();
+        return;
+      }
+    }
+    const meta = e.ctrlKey || e.metaKey;
+    if (e.key === '?' && !meta) {
+      const tag = (e.target as HTMLElement | null)?.tagName ?? '';
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !(e.target as HTMLElement | null)?.isContentEditable) {
+        e.preventDefault();
+        this.showHotkeysLegend.update((v) => !v);
+        return;
+      }
     }
     const path = this.router.url.split('?')[0];
-    const meta = e.ctrlKey || e.metaKey;
     if (meta && (e.key === 'f' || e.key === 'F')) {
       e.preventDefault();
       document.querySelector<HTMLElement>('[data-tf-focus-search]')?.focus();
@@ -81,6 +98,10 @@ export class AppShellComponent implements OnInit, OnDestroy {
   }
 
   private async quickNewWorkflow(): Promise<void> {
+    if (this.isViewerRole()) {
+      this.toast.warning('Viewers cannot create workflows.');
+      return;
+    }
     try {
       const id = await this.ipc.api.workflows.create({ name: 'Untitled workflow', description: '' });
       await this.router.navigate(['/builder', id]);
@@ -146,6 +167,7 @@ export class AppShellComponent implements OnInit, OnDestroy {
       }>;
       const self = team.find((m) => m.is_self === 1);
       this.selfMember.set(unlocked && self ? { display_name: self.display_name, role: self.role } : null);
+      this.isViewerRole.set(Boolean(unlocked && self?.role === 'Viewer'));
     } catch {
       /* ignore */
     }

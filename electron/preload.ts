@@ -1,7 +1,16 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { isIpcErrorEnvelope } from './ipc-handle';
 
 function inv<T>(channel: string, ...args: unknown[]): Promise<T> {
-  return ipcRenderer.invoke(channel, ...args) as Promise<T>;
+  return (async () => {
+    const v = await ipcRenderer.invoke(channel, ...args);
+    if (isIpcErrorEnvelope(v)) {
+      const err = new Error(v.message);
+      (err as Error & { code?: string }).code = v.code;
+      throw err;
+    }
+    return v as T;
+  })();
 }
 
 contextBridge.exposeInMainWorld('taskForge', {
@@ -28,6 +37,11 @@ contextBridge.exposeInMainWorld('taskForge', {
     get: (id: string) => inv('logs:get', id),
     clear: () => inv('logs:clear'),
     export: () => inv<string | null>('logs:export'),
+    onStepProgress: (cb: (step: Record<string, unknown>) => void) => {
+      const handler = (_e: IpcRendererEvent, step: Record<string, unknown>) => cb(step);
+      ipcRenderer.on('logs:stepProgress', handler);
+      return () => ipcRenderer.removeListener('logs:stepProgress', handler);
+    },
   },
   variables: {
     list: () => inv('variables:list'),
@@ -63,19 +77,34 @@ contextBridge.exposeInMainWorld('taskForge', {
     remove: (id: string) => inv<boolean>('team:remove', id),
   },
   audit: {
-    list: () => inv('audit:list'),
+    list: (opts?: { action?: string; userId?: string; q?: string }) => inv('audit:list', opts),
     export: () => inv('audit:export'),
   },
   api: {
     getKey: () => inv('api:getKey'),
     regenerateKey: () => inv('api:regenerateKey'),
+    listKeys: () =>
+      inv<Array<{ id: string; name: string; scopes: string[]; created_at: string; is_primary: boolean }>>('api:listKeys'),
+    createKey: (payload: { name: string; scopes: string[] }) => inv<{ id: string; token: string }>('api:createKey', payload),
+    revokeKey: (id: string) => inv<boolean>('api:revokeKey', id),
   },
   marketplace: {
     list: () => inv('marketplace:list'),
     install: (id: string) => inv('marketplace:install', id),
   },
   ai: {
-    parse: (prompt: string) => inv('ai:parse', prompt),
+    parse: (payload: string | { prompt: string; messages?: Array<{ role: string; content: string }> }) =>
+      inv<{ name: string; nodes: Array<Record<string, unknown>> }>('ai:parse', payload),
+    parseStream: (payload: { prompt: string; messages?: Array<{ role: string; content: string }> }) =>
+      inv<{ name: string; nodes: Array<Record<string, unknown>> }>('ai:parseStream', payload),
+    onStreamToken: (cb: (chunk: string) => void) => {
+      const handler = (_e: IpcRendererEvent, chunk: string) => cb(chunk);
+      ipcRenderer.on('ai:streamToken', handler);
+      return () => ipcRenderer.removeListener('ai:streamToken', handler);
+    },
+  },
+  data: {
+    exportZip: () => inv<string | null>('data:exportZip'),
   },
   app: {
     getPaths: () => inv('app:getPaths'),

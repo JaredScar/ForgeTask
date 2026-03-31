@@ -140,6 +140,7 @@ export class LogsPageComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private disposeLogs: (() => void) | undefined;
+  private disposeStep: (() => void) | undefined;
   protected readonly rows = signal<LogRow[]>([]);
   protected readonly filter = signal('');
   protected readonly statusFilter = signal('all');
@@ -152,10 +153,24 @@ export class LogsPageComponent implements OnInit, OnDestroy {
     });
     void this.reload();
     this.disposeLogs = this.ipc.api.app.onLogsNew(() => void this.reload());
+    this.disposeStep = this.ipc.api.logs.onStepProgress((step) => {
+      const logId = String(step['logId'] ?? '');
+      if (!logId) return;
+      const line: LogStepRow = {
+        step_kind: String(step['stepKind'] ?? ''),
+        status: String(step['status'] ?? ''),
+        message: (step['message'] as string) ?? null,
+        error: (step['error'] as string) ?? null,
+      };
+      this.rows.update((list) =>
+        list.map((r) => (r.id === logId ? { ...r, steps: [...(r.steps ?? []), line] } : r))
+      );
+    });
   }
 
   ngOnDestroy(): void {
     this.disposeLogs?.();
+    this.disposeStep?.();
   }
 
   protected onFilterChange(v: string): void {

@@ -130,9 +130,15 @@ void app
       return;
     }
 
-    const engine = new AutomationEngine(db, (payload) => {
-      mainWindow?.webContents.send('logs:new', payload);
-    });
+    const engine = new AutomationEngine(
+      db,
+      (payload) => {
+        mainWindow?.webContents.send('logs:new', payload);
+      },
+      (step) => {
+        mainWindow?.webContents.send('logs:stepProgress', step);
+      }
+    );
     const triggers = new TriggerManager(db, engine);
     registerIpcHandlers(db, engine, triggers, () => mainWindow);
     apiStop = startApiServer(db, engine, triggers).stop;

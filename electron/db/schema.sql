@@ -97,7 +97,24 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
   applied_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS api_keys (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  scopes TEXT NOT NULL DEFAULT '["*"]',
+  created_at TEXT NOT NULL,
+  is_primary INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS trigger_state (
+  workflow_id TEXT NOT NULL,
+  trigger_node_id TEXT NOT NULL,
+  last_fired_at TEXT NOT NULL,
+  PRIMARY KEY (workflow_id, trigger_node_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_workflow_nodes_wf ON workflow_nodes(workflow_id);
 CREATE INDEX IF NOT EXISTS idx_edges_wf ON workflow_edges(workflow_id);
 CREATE INDEX IF NOT EXISTS idx_logs_wf ON execution_logs(workflow_id);
 CREATE INDEX IF NOT EXISTS idx_log_steps_log ON log_steps(log_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_token ON api_keys(token);

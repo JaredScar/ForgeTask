@@ -1,4 +1,5 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { IpcService } from '../../core/services/ipc.service';
 
 interface AuditRow {
@@ -13,6 +14,7 @@ interface AuditRow {
 
 @Component({
   selector: 'app-audit-logs-page',
+  imports: [FormsModule],
   template: `
     <div>
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -23,6 +25,29 @@ interface AuditRow {
         <button type="button" (click)="exportCsv()" class="rounded-lg border border-tf-border px-4 py-2 text-sm hover:bg-neutral-800">
           Export CSV
         </button>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <input
+          type="search"
+          [(ngModel)]="filterAction"
+          (ngModelChange)="applyFilters()"
+          placeholder="Filter action…"
+          class="h-9 min-w-[8rem] flex-1 rounded-lg border border-tf-border bg-tf-card px-3 text-sm outline-none focus:ring-1 focus:ring-tf-green"
+        />
+        <input
+          type="search"
+          [(ngModel)]="filterUser"
+          (ngModelChange)="applyFilters()"
+          placeholder="User…"
+          class="h-9 min-w-[8rem] flex-1 rounded-lg border border-tf-border bg-tf-card px-3 text-sm outline-none focus:ring-1 focus:ring-tf-green"
+        />
+        <input
+          type="search"
+          [(ngModel)]="filterQ"
+          (ngModelChange)="applyFilters()"
+          placeholder="Search resource / action / user…"
+          class="h-9 min-w-[10rem] flex-[2] rounded-lg border border-tf-border bg-tf-card px-3 text-sm outline-none focus:ring-1 focus:ring-tf-green"
+        />
       </div>
       <div class="mt-4 overflow-hidden rounded-xl border border-tf-border">
         <table class="w-full text-left text-sm">
@@ -60,9 +85,24 @@ interface AuditRow {
 export class AuditLogsPageComponent implements OnInit {
   private readonly ipc = inject(IpcService);
   protected readonly rows = signal<AuditRow[]>([]);
+  protected filterAction = '';
+  protected filterUser = '';
+  protected filterQ = '';
 
   async ngOnInit(): Promise<void> {
-    const list = (await this.ipc.api.audit.list()) as Record<string, unknown>[];
+    await this.reload();
+  }
+
+  protected async applyFilters(): Promise<void> {
+    await this.reload();
+  }
+
+  private async reload(): Promise<void> {
+    const list = (await this.ipc.api.audit.list({
+      action: this.filterAction.trim() || undefined,
+      userId: this.filterUser.trim() || undefined,
+      q: this.filterQ.trim() || undefined,
+    })) as Record<string, unknown>[];
     this.rows.set(
       list.map((x) => ({
         id: String(x['id']),

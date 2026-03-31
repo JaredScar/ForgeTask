@@ -40,7 +40,7 @@ interface LastRunDetail {
             placeholder="Search workflows..."
             class="h-9 w-56 rounded-lg border border-tf-border bg-tf-card px-3 text-sm outline-none ring-tf-green focus:ring-1"
           />
-          @if (list().length > 0) {
+          @if (!isViewer() && list().length > 0) {
             <label class="flex cursor-pointer items-center gap-2 text-xs text-tf-muted">
               <input
                 type="checkbox"
@@ -50,23 +50,40 @@ interface LastRunDetail {
               Select visible
             </label>
           }
-          <button
-            type="button"
-            (click)="newWorkflow()"
-            class="h-9 rounded-lg bg-white px-4 text-sm font-medium text-black hover:bg-neutral-200"
-          >
-            + New Workflow
-          </button>
+          @if (!isViewer()) {
+            <button
+              type="button"
+              (click)="newWorkflow()"
+              class="h-9 rounded-lg bg-white px-4 text-sm font-medium text-black hover:bg-neutral-200"
+            >
+              + New Workflow
+            </button>
+          }
         </div>
       </div>
       @if (list().length === 0) {
-        <app-empty-state
-          icon="⚡"
-          title="No workflows yet"
-          description="Create your first automation, use onboarding, or install a template from the Marketplace (Pro)."
-          ctaLabel="Create workflow"
-          ctaRoute="/builder/new"
-        />
+        <div>
+          <app-empty-state
+            icon="⚡"
+            title="No workflows yet"
+            [description]="
+              isViewer()
+                ? 'No workflows yet. View-only accounts cannot create workflows here.'
+                : 'Create your first automation, use onboarding, or install a template from the Marketplace (Pro).'
+            "
+          />
+          @if (!isViewer()) {
+            <div class="mt-4 flex justify-center">
+              <button
+                type="button"
+                (click)="newWorkflow()"
+                class="rounded-lg bg-tf-green px-4 py-2 text-sm font-medium text-black hover:opacity-90"
+              >
+                Create workflow
+              </button>
+            </div>
+          }
+        </div>
       } @else {
         <div class="flex flex-wrap gap-2">
           @for (t of tagFilters(); track t) {
@@ -94,13 +111,15 @@ interface LastRunDetail {
               <article class="rounded-xl border border-tf-border bg-tf-card p-4">
                 <div class="flex items-start justify-between gap-2">
                   <div class="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      class="mt-2 h-4 w-4 rounded border-tf-border"
-                      [checked]="selectedIds().has(w.id)"
-                      (change)="toggleSelect(w.id, $event)"
-                      (click)="$event.stopPropagation()"
-                    />
+                    @if (!isViewer()) {
+                      <input
+                        type="checkbox"
+                        class="mt-2 h-4 w-4 rounded border-tf-border"
+                        [checked]="selectedIds().has(w.id)"
+                        (change)="toggleSelect(w.id, $event)"
+                        (click)="$event.stopPropagation()"
+                      />
+                    }
                     <button
                       type="button"
                       (click)="toggle(w)"
@@ -108,6 +127,7 @@ interface LastRunDetail {
                       [class.bg-tf-green]="w.enabled"
                       [class.text-black]="w.enabled"
                       [class.text-neutral-500]="!w.enabled"
+                      [disabled]="isViewer()"
                       title="Enable / disable"
                     >
                       @if (w.enabled) {
@@ -134,7 +154,11 @@ interface LastRunDetail {
                   </span>
                 </div>
                 <div class="mt-3 flex flex-wrap gap-2">
-                  <a [routerLink]="['/builder', w.id]" class="text-xs text-tf-green hover:underline">Edit in Builder</a>
+                  @if (!isViewer()) {
+                    <a [routerLink]="['/builder', w.id]" class="text-xs text-tf-green hover:underline">Edit in Builder</a>
+                  } @else {
+                    <span class="text-xs text-tf-muted">View only</span>
+                  }
                   <button type="button" (click)="runNow(w.id)" class="text-xs text-neutral-400 hover:text-white">
                     @if (runningId() === w.id) {
                       <span class="inline-block h-3 w-3 animate-spin rounded-full border border-neutral-500 border-t-transparent"></span>
@@ -145,8 +169,10 @@ interface LastRunDetail {
                   <button type="button" (click)="toggleLastRun(w.id)" class="text-xs text-neutral-400 hover:text-white">
                     {{ lastRunPanelId() === w.id ? 'Hide last run' : 'View last run' }}
                   </button>
-                  <button type="button" (click)="duplicateWorkflow(w)" class="text-xs text-neutral-400 hover:text-white">Duplicate</button>
-                  <button type="button" (click)="remove(w.id)" class="text-xs text-red-400 hover:underline">Delete</button>
+                  @if (!isViewer()) {
+                    <button type="button" (click)="duplicateWorkflow(w)" class="text-xs text-neutral-400 hover:text-white">Duplicate</button>
+                    <button type="button" (click)="remove(w.id)" class="text-xs text-red-400 hover:underline">Delete</button>
+                  }
                 </div>
                 @if (lastRunPanelId() === w.id) {
                   <div class="mt-3 rounded-lg border border-tf-border bg-tf-bg p-3 text-xs text-neutral-300">
@@ -171,7 +197,7 @@ interface LastRunDetail {
         }
       }
     </div>
-    @if (selectedIds().size > 0) {
+    @if (!isViewer() && selectedIds().size > 0) {
       <div
         class="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 flex-wrap items-center gap-2 rounded-xl border border-tf-border bg-tf-card px-4 py-3 shadow-xl"
       >
@@ -203,6 +229,7 @@ export class WorkflowsPageComponent implements OnInit {
   protected readonly runningId = signal<string | null>(null);
   protected readonly lastRunPanelId = signal<string | null>(null);
   protected readonly lastRunDetail = signal<LastRunDetail | null>(null);
+  protected readonly isViewer = signal(false);
 
   /** Tag chips derived from workflows only (no hardcoded demo tags). */
   protected readonly tagFilters = computed(() => {
@@ -244,6 +271,19 @@ export class WorkflowsPageComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     await this.reload();
+    await this.loadViewerFlag();
+  }
+
+  private async loadViewerFlag(): Promise<void> {
+    try {
+      const { unlocked } = await this.ipc.api.entitlement.getStatus();
+      if (!unlocked) return;
+      const team = (await this.ipc.api.team.list()) as Array<{ is_self: number; role: string }>;
+      const self = team.find((m) => m.is_self === 1);
+      this.isViewer.set(self?.role === 'Viewer');
+    } catch {
+      /* ignore */
+    }
   }
 
   async reload(): Promise<void> {
@@ -388,6 +428,10 @@ export class WorkflowsPageComponent implements OnInit {
   }
 
   async newWorkflow(): Promise<void> {
+    if (this.isViewer()) {
+      this.toast.warning('Viewers cannot create workflows.');
+      return;
+    }
     const id = await this.ipc.api.workflows.create({ name: 'Untitled workflow', description: '' });
     await this.reload();
     void this.router.navigate(['/builder', id]);
