@@ -20,6 +20,21 @@ function normalizeExe(config: Record<string, unknown>): string {
   return raw.replace(/^["']+|["']+$/g, '');
 }
 
+/** Quote for embedding in `cmd /c` double-quoted segment (`"` → `""`). */
+function cmdQuotedArg(s: string): string {
+  return `"${String(s).replace(/"/g, '""')}"`;
+}
+
+/**
+ * One `cmd /d /s /c "…"` line so `start ""` is parsed literally (empty window title).
+ * Avoids Node’s per-argv escaping breaking the special `""` title token.
+ * @see https://ss64.com/nt/start.html
+ */
+function windowsCmdStartLine(cwd: string, filePath: string, args: string[]): string {
+  const tail = args.map((a) => cmdQuotedArg(a)).join(' ');
+  return `start "" /D ${cmdQuotedArg(cwd)} ${cmdQuotedArg(filePath)}${tail ? ` ${tail}` : ''}`;
+}
+
 /** Absolute or relative path to a concrete .exe file (not a bare PATH name like `code`). */
 function resolveWindowsExeFile(exe: string): string | null {
   const abs = path.win32.isAbsolute(exe) || path.isAbsolute(exe);
@@ -33,9 +48,9 @@ function resolveWindowsExeFile(exe: string): string | null {
 }
 
 /**
- * Launch a desktop or console program. On Windows we avoid `shell: true` for PATH-only names
- * (see comment in history). For a concrete `.exe` path, CLI tools like ngrok need `start` so
- * they get their own console; direct `spawn` from the GUI main process often exits immediately.
+ * Launch a program. Windows:
+ * - PATH-only names: direct `spawn` (no `shell: true` — avoids false success when cmd starts but the target is missing).
+ * - Full path to `.exe`: `cmd /d /s /c "start \"\" /D \"…\" \"…exe\" …"` — `start` + empty quoted title + `/D` + exe, in one command string so quoting matches Explorer-style `start`.
  */
 export function runOpenApplication(config: Record<string, unknown>): Promise<void> {
   const exe = normalizeExe(config);
@@ -47,6 +62,46 @@ export function runOpenApplication(config: Record<string, unknown>): Promise<voi
   const ext = path.extname(exe).toLowerCase();
 
   return new Promise((resolve, reject) => {
+    if (onWin && ext === '.exe') {
+      const filePath = resolveWindowsExeFile(exe);
+      if (filePath) {
+        if (!fs.existsSync(filePath)) {
+          reject(new Error(`Executable not found: ${filePath}`));
+          return;
+        }
+        const cwd = path.dirname(filePath);
+        const line = windowsCmdStartLine(cwd, filePath, args);
+        const childCmd = spawn('cmd.exe', ['/d', '/s', '/c', line], {
+          stdio: 'ignore',
+          windowsHide: false,
+          shell: false,
+          detached: false,
+        });
+        childCmd.on('error', reject);
+        childCmd.once('close', (code) => {
+          if (code === 0) {
+            resolve();
+            return;
+          }
+          const direct = spawn(filePath, args, {
+            cwd,
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: false,
+            shell: false,
+          });
+          direct.on('error', (err) =>
+            reject(new Error(`Could not start program (cmd exit ${code ?? 'unknown'}; ${err.message})`))
+          );
+          direct.once('spawn', () => {
+            direct.unref();
+            resolve();
+          });
+        });
+        return;
+      }
+    }
+
     let child: ReturnType<typeof spawn>;
     if (onWin && ext === '.ps1') {
       const script = path.isAbsolute(exe) ? path.normalize(exe) : path.resolve(process.cwd(), exe);
@@ -63,30 +118,6 @@ export function runOpenApplication(config: Record<string, unknown>): Promise<voi
         windowsHide: false,
         shell: false,
       });
-    } else if (onWin && ext === '.exe') {
-      const filePath = resolveWindowsExeFile(exe);
-      if (filePath) {
-        if (!fs.existsSync(filePath)) {
-          reject(new Error(`Executable not found: ${filePath}`));
-          return;
-        }
-        const cwd = path.dirname(filePath);
-        // `start "" <exe> …` — new console for CLI apps (ngrok, etc.); empty arg is window title.
-        child = spawn('cmd.exe', ['/c', 'start', '', filePath, ...args], {
-          cwd,
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: false,
-          shell: false,
-        });
-      } else {
-        child = spawn(exe, args, {
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: false,
-          shell: false,
-        });
-      }
     } else {
       child = spawn(exe, args, {
         detached: true,
