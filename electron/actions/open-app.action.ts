@@ -20,20 +20,12 @@ function normalizeExe(config: Record<string, unknown>): string {
   return raw.replace(/^["']+|["']+$/g, '');
 }
 
-/** Quote for embedding in `cmd /c` double-quoted segment (`"` → `""`). */
-function cmdQuotedArg(s: string): string {
-  return `"${String(s).replace(/"/g, '""')}"`;
-}
-
 /**
- * One `cmd /d /s /c "…"` line so `start ""` is parsed literally (empty window title).
- * Avoids Node’s per-argv escaping breaking the special `""` title token.
- * @see https://ss64.com/nt/start.html
+ * `start` treats the first quoted token as the window title. A single word is often *not* quoted
+ * by Node’s Windows argv builder, so cmd thinks that word is the program name (e.g. “cannot find TaskForge”).
+ * A title with a space is always quoted → `start "TaskForge run" /D … "exe" …`.
  */
-function windowsCmdStartLine(cwd: string, filePath: string, args: string[]): string {
-  const tail = args.map((a) => cmdQuotedArg(a)).join(' ');
-  return `start "" /D ${cmdQuotedArg(cwd)} ${cmdQuotedArg(filePath)}${tail ? ` ${tail}` : ''}`;
-}
+const WIN_START_TITLE = 'TaskForge run';
 
 /** Absolute or relative path to a concrete .exe file (not a bare PATH name like `code`). */
 function resolveWindowsExeFile(exe: string): string | null {
@@ -49,8 +41,10 @@ function resolveWindowsExeFile(exe: string): string | null {
 
 /**
  * Launch a program. Windows:
- * - PATH-only names: direct `spawn` (no `shell: true` — avoids false success when cmd starts but the target is missing).
- * - Full path to `.exe`: `cmd /d /s /c "start \"\" /D \"…\" \"…exe\" …"` — `start` + empty quoted title + `/D` + exe, in one command string so quoting matches Explorer-style `start`.
+ * - PATH-only names: direct `spawn` (no `shell: true`).
+ * - Full path to `.exe`: `cmd /d /c start "<title>" /D <cwd> <exe> [args…]` as separate argv entries.
+ *   Do **not** use `cmd /s /c "one big string"` — `/S` strips first/last `"` from the /C string; when Node
+ *   wraps that string in quotes, the line is corrupted and Windows may try to run `\\` or other garbage.
  */
 export function runOpenApplication(config: Record<string, unknown>): Promise<void> {
   const exe = normalizeExe(config);
@@ -70,13 +64,16 @@ export function runOpenApplication(config: Record<string, unknown>): Promise<voi
           return;
         }
         const cwd = path.dirname(filePath);
-        const line = windowsCmdStartLine(cwd, filePath, args);
-        const childCmd = spawn('cmd.exe', ['/d', '/s', '/c', line], {
-          stdio: 'ignore',
-          windowsHide: false,
-          shell: false,
-          detached: false,
-        });
+        const childCmd = spawn(
+          'cmd.exe',
+          ['/d', '/c', 'start', WIN_START_TITLE, '/D', cwd, filePath, ...args],
+          {
+            stdio: 'ignore',
+            windowsHide: false,
+            shell: false,
+            detached: false,
+          }
+        );
         childCmd.on('error', reject);
         childCmd.once('close', (code) => {
           if (code === 0) {
