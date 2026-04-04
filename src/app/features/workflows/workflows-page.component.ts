@@ -6,6 +6,7 @@ import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
+import { toastAfterManualWorkflowRun } from '../../core/utils/workflow-run-feedback';
 import type { WorkflowDto } from '../../../types/taskforge-window';
 
 interface LogStepRow {
@@ -372,9 +373,9 @@ export class WorkflowsPageComponent implements OnInit {
   async runNow(id: string): Promise<void> {
     this.runningId.set(id);
     try {
-      await this.ipc.api.engine.runWorkflow(id);
+      const logId = await this.ipc.api.engine.runWorkflow(id);
       await this.reload();
-      this.toast.success('Workflow executed');
+      await toastAfterManualWorkflowRun(this.ipc.api, logId, this.toast);
     } finally {
       this.runningId.set(null);
     }

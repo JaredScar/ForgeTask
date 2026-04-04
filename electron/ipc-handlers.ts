@@ -638,9 +638,9 @@ export function registerIpcHandlers(
   });
 
   ipcHandle('engine:runWorkflow', async (_e, workflowId: string) => {
-    await engine.runWorkflow(workflowId, 'manual');
+    const logId = await engine.runWorkflow(workflowId, 'manual');
     writeAuditLog(db, 'workflow.run', workflowId);
-    return true;
+    return logId;
   });
 
   ipcHandle('engine:stopWorkflow', () => true);

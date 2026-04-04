@@ -106,9 +106,15 @@ export class AutomationEngine {
     let finalStatus: 'success' | 'failure' | 'skipped' = 'success';
     let lastError: string | undefined;
 
+    const manualTestRun = triggerKind === 'manual';
+
     try {
       for (const node of nodes) {
         if (node.node_type === 'trigger') {
+          /* Manual / Test Run: do not simulate scheduled triggers — run conditions and actions only. */
+          if (manualTestRun) {
+            continue;
+          }
           this.insertStep(logId, workflowId, node, 'success', 0, 'Trigger fired', undefined, undefined);
           continue;
         }

@@ -4,6 +4,8 @@ import {
   LOCAL_DEV_OPENAI_API_KEY_PLACEHOLDER,
   LOCAL_DEV_REST_API_KEY_PLACEHOLDER,
 } from '../local-dev-keys';
+import { MOCK_WORKFLOW_RUN_LOG_ID } from '../utils/workflow-run-feedback';
+import { defaultActionConfig, defaultTriggerConfig } from '../../shared/constants/catalog-defaults';
 
 /** Mirrors built-in templates (browser dev) — same copy as electron/marketplace-data, without node graphs. */
 const MOCK_MARKETPLACE_LIST: Array<{ id: string; title: string; author: string; description: string; pro: boolean }> = [
@@ -191,7 +193,7 @@ export class IpcService {
           persistDevMockToStorage(mockWorkflows, mockWorkflowNodes);
           return true;
         },
-        createFromStarter: async (p) => {
+        createFromStarter: async (p: { mode: 'trigger' | 'action'; kind: string; displayTitle: string }) => {
           const id = crypto.randomUUID();
           mockWorkflows.push({
             id,
@@ -207,7 +209,32 @@ export class IpcService {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-          mockWorkflowNodes.set(id, []);
+          const nodes: WorkflowNodeDto[] = [];
+          let order = 0;
+          if (p.mode === 'action') {
+            nodes.push({
+              id: crypto.randomUUID(),
+              workflow_id: id,
+              node_type: 'trigger',
+              kind: 'time_schedule',
+              config: JSON.stringify(defaultTriggerConfig('time_schedule')),
+              position_x: 0,
+              position_y: 0,
+              sort_order: order++,
+            });
+          }
+          const cfg = p.mode === 'trigger' ? defaultTriggerConfig(p.kind) : defaultActionConfig(p.kind);
+          nodes.push({
+            id: crypto.randomUUID(),
+            workflow_id: id,
+            node_type: p.mode === 'trigger' ? 'trigger' : 'action',
+            kind: p.kind,
+            config: JSON.stringify(cfg),
+            position_x: 0,
+            position_y: 0,
+            sort_order: order,
+          });
+          mockWorkflowNodes.set(id, nodes);
           persistDevMockToStorage(mockWorkflows, mockWorkflowNodes);
           return id;
         },
@@ -264,7 +291,7 @@ export class IpcService {
         getSystemHealth: async () => ({ cpu: 0, memory: 0, queue: 0, storageGb: 0 }),
       },
       engine: {
-        runWorkflow: async () => true,
+        runWorkflow: async () => MOCK_WORKFLOW_RUN_LOG_ID,
         stopWorkflow: async () => true,
         getStatus: async () => ({ running: true }),
       },

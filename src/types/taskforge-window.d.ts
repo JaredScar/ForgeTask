@@ -77,7 +77,8 @@ export interface TaskForgeBridge {
     getSystemHealth: () => Promise<{ cpu: number; memory: number; queue: number; storageGb: number }>;
   };
   engine: {
-    runWorkflow: (id: string) => Promise<boolean>;
+    /** Empty string if the run was queued behind an in-flight run (`queue` concurrency). */
+    runWorkflow: (id: string) => Promise<string>;
     stopWorkflow: () => Promise<boolean>;
     getStatus: () => Promise<{ running: boolean }>;
   };

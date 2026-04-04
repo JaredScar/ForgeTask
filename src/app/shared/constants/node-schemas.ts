@@ -101,7 +101,12 @@ export const NODE_CONFIG_SCHEMAS: Record<string, SchemaField[]> = {
   open_application: [
     { key: 'label', label: 'Label', type: 'text' },
     { key: 'path', label: 'Executable path', type: 'text' },
-    { key: 'args', label: 'Arguments', type: 'text' },
+    {
+      key: 'args',
+      label: 'Arguments',
+      type: 'text',
+      placeholder: 'e.g. http 8080 (ngrok needs a subcommand)',
+    },
   ],
   show_notification: [
     { key: 'label', label: 'Label', type: 'text' },

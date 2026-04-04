@@ -30,7 +30,7 @@ export function defaultTriggerConfig(kind: string): Record<string, unknown> {
 export function defaultActionConfig(kind: string): Record<string, unknown> {
   switch (kind) {
     case 'open_application':
-      return { path: 'notepad.exe', label: 'Open application' };
+      return { path: 'notepad.exe', args: '', label: 'Open application' };
     case 'show_notification':
       return { title: 'TaskForge', body: 'Notification text', label: 'Show notification' };
     case 'open_file_folder':

@@ -8,6 +8,7 @@ import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
 import { HotkeysService } from '../../core/services/hotkeys.service';
 import { isEntitlementRequiredError } from '../../core/utils/entitlement-error';
+import { toastAfterManualWorkflowRun } from '../../core/utils/workflow-run-feedback';
 import type { WorkflowDto, WorkflowNodeDto } from '../../../types/taskforge-window';
 import { NodePickerComponent } from './node-picker/node-picker.component';
 import { NodeConfigFormComponent } from './node-config-form/node-config-form.component';
@@ -443,7 +444,7 @@ export class BuilderPageComponent implements OnInit, OnDestroy {
   }
 
   async testRun(): Promise<void> {
-    await this.ipc.api.engine.runWorkflow(this.wfId);
-    this.toast.success('Run finished — check Logs');
+    const logId = await this.ipc.api.engine.runWorkflow(this.wfId);
+    await toastAfterManualWorkflowRun(this.ipc.api, logId, this.toast);
   }
 }
