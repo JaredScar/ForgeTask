@@ -105,7 +105,7 @@ export const NODE_CONFIG_SCHEMAS: Record<string, SchemaField[]> = {
       key: 'args',
       label: 'Arguments',
       type: 'text',
-      placeholder: 'e.g. http 8080 (ngrok needs a subcommand)',
+      placeholder: 'e.g. http 8080 — ngrok needs a subcommand (http, tcp, …)',
     },
   ],
   show_notification: [
