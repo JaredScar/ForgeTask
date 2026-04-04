@@ -6,6 +6,8 @@ export interface SchemaField {
   type: FieldType;
   options?: { value: string; label: string }[];
   placeholder?: string;
+  /** Rich UI for `type: 'text'` (e.g. native file picker in Electron). */
+  ui?: 'executablePicker';
 }
 
 /** Declarative config fields per node `kind` (matches engine JSON). */
@@ -100,7 +102,7 @@ export const NODE_CONFIG_SCHEMAS: Record<string, SchemaField[]> = {
 
   open_application: [
     { key: 'label', label: 'Label', type: 'text' },
-    { key: 'path', label: 'Executable path', type: 'text' },
+    { key: 'path', label: 'Executable path', type: 'text', ui: 'executablePicker', placeholder: 'Path or click Browse…' },
     {
       key: 'args',
       label: 'Arguments',

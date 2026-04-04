@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { CronBuilderComponent } from '../cron-builder/cron-builder.component';
 import { schemaForKind, type SchemaField } from '../../../shared/constants/node-schemas';
 import { IpcService } from '../../../core/services/ipc.service';
+import { ToastService } from '../../../core/services/toast.service';
 
 @Component({
   selector: 'app-node-config-form',
@@ -19,13 +20,34 @@ import { IpcService } from '../../../core/services/ipc.service';
             }
             @switch (f.type) {
               @case ('text') {
-                <input
-                  [ngModel]="strVal(f.key)"
-                  (ngModelChange)="setStr(f.key, $event)"
-                  [attr.list]="varListId"
-                  class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-2 py-1.5 text-sm"
-                  [placeholder]="f.placeholder ?? ''"
-                />
+                @if (f.ui === 'executablePicker') {
+                  <div class="mt-1 flex gap-2">
+                    <input
+                      [ngModel]="strVal(f.key)"
+                      (ngModelChange)="setStr(f.key, $event)"
+                      [attr.list]="varListId"
+                      class="min-w-0 flex-1 rounded-lg border border-tf-border bg-tf-bg px-2 py-1.5 text-sm"
+                      [placeholder]="f.placeholder ?? ''"
+                    />
+                    @if (ipc.isElectron) {
+                      <button
+                        type="button"
+                        (click)="pickExecutable(f.key)"
+                        class="shrink-0 rounded-lg border border-tf-border bg-tf-card px-3 py-1.5 text-sm text-neutral-200 hover:bg-white/5"
+                      >
+                        Browse…
+                      </button>
+                    }
+                  </div>
+                } @else {
+                  <input
+                    [ngModel]="strVal(f.key)"
+                    (ngModelChange)="setStr(f.key, $event)"
+                    [attr.list]="varListId"
+                    class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-2 py-1.5 text-sm"
+                    [placeholder]="f.placeholder ?? ''"
+                  />
+                }
               }
               @case ('number') {
                 <input
@@ -79,7 +101,8 @@ import { IpcService } from '../../../core/services/ipc.service';
   `,
 })
 export class NodeConfigFormComponent implements OnChanges {
-  private readonly ipc = inject(IpcService);
+  protected readonly ipc = inject(IpcService);
+  private readonly toast = inject(ToastService);
 
   @Input({ required: true }) kind = '';
   /** Parsed config object (mutable copy in parent via events). */
@@ -141,5 +164,15 @@ export class NodeConfigFormComponent implements OnChanges {
 
   varToken(name: string): string {
     return `{{${name}}}`;
+  }
+
+  async pickExecutable(key: string): Promise<void> {
+    if (!this.ipc.isElectron) return;
+    try {
+      const p = await this.ipc.api.dialog.pickExecutable();
+      if (p) this.setStr(key, p);
+    } catch (e) {
+      this.toast.error(e instanceof Error ? e.message : 'Could not open file picker');
+    }
   }
 }

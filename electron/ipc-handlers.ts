@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, type OpenDialogOptions } from 'electron';
 import { ipcHandle } from './ipc-handle';
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
@@ -423,6 +423,32 @@ export function registerIpcHandlers(
     fs.writeFileSync(filePath, header + body, 'utf-8');
     writeAuditLog(db, 'logs.export', filePath);
     return filePath;
+  });
+
+  ipcHandle('dialog:pickExecutable', async () => {
+    const win = getWin();
+    const platform = process.platform;
+    const filters =
+      platform === 'win32'
+        ? [
+            { name: 'Programs', extensions: ['exe', 'cmd', 'bat', 'ps1'] },
+            { name: 'All files', extensions: ['*'] },
+          ]
+        : platform === 'darwin'
+          ? [
+              { name: 'Applications', extensions: ['app', 'command', 'exe'] },
+              { name: 'Scripts', extensions: ['sh'] },
+              { name: 'All files', extensions: ['*'] },
+            ]
+          : [{ name: 'All files', extensions: ['*'] }];
+    const opts: OpenDialogOptions = {
+      title: 'Choose executable',
+      properties: ['openFile'],
+      filters,
+    };
+    const { canceled, filePaths } = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+    if (canceled || !filePaths?.length) return null;
+    return filePaths[0] ?? null;
   });
 
   ipcHandle('variables:list', () => {

@@ -316,6 +316,9 @@ export class IpcService {
         list: async (_opts?: { action?: string; userId?: string; q?: string }) => [],
         export: async () => null,
       },
+      dialog: {
+        pickExecutable: async () => null,
+      },
       api: {
         getKey: async () => LOCAL_DEV_REST_API_KEY_PLACEHOLDER,
         regenerateKey: async () => LOCAL_DEV_REST_API_KEY_PLACEHOLDER,

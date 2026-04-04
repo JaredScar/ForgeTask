@@ -122,6 +122,10 @@ export interface TaskForgeBridge {
     onStreamToken: (cb: (chunk: string) => void) => () => void;
   };
   data: { exportZip: () => Promise<string | null> };
+  dialog: {
+    /** Native open-file dialog; returns absolute path or `null` if cancelled. */
+    pickExecutable: () => Promise<string | null>;
+  };
   app: {
     getPaths: () => Promise<{ userData: string }>;
     getStats: () => Promise<{
