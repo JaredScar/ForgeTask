@@ -72,7 +72,14 @@ contextBridge.exposeInMainWorld('taskForge', {
   },
   entitlement: {
     getStatus: () =>
-      inv<{ unlocked: boolean; licenseServerConfigured?: boolean; licenseMode?: string }>('entitlement:getStatus'),
+      inv<{
+        unlocked: boolean;
+        licenseServerConfigured?: boolean;
+        licenseMode?: string;
+        seats?: number;
+        licenseValidUntil?: string | null;
+        licenseLastVerifiedAt?: string | null;
+      }>('entitlement:getStatus'),
     setKey: (key: string) =>
       inv<{ ok: boolean; unlocked: boolean; error?: 'invalid_key' | 'network' }>('entitlement:setKey', key),
     refreshOnline: () => inv<{ ok: boolean; unlocked: boolean; error?: string }>('entitlement:refreshOnline'),

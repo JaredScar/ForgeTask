@@ -38,7 +38,17 @@ export type AiDraftResult = {
 
 /** Maps `ipcMain.handle` channel name → request args (after `event`) and response type. */
 export interface IpcInvokeMap {
-  'entitlement:getStatus': { req: []; res: { unlocked: boolean; licenseServerConfigured?: boolean; licenseMode?: string } };
+  'entitlement:getStatus': {
+    req: [];
+    res: {
+      unlocked: boolean;
+      licenseServerConfigured?: boolean;
+      licenseMode?: string;
+      seats?: number;
+      licenseValidUntil?: string | null;
+      licenseLastVerifiedAt?: string | null;
+    };
+  };
   'entitlement:refreshOnline': { req: []; res: { ok: boolean; unlocked: boolean; error?: string } };
   'entitlement:setKey': { req: [key: string]; res: { ok: boolean; unlocked: boolean; error?: 'invalid_key' | 'network' } };
   'workflows:list': { req: []; res: WorkflowDto[] };

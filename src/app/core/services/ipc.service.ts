@@ -322,7 +322,14 @@ export class IpcService {
         getStatus: async () => ({ running: true }),
       },
       entitlement: {
-        getStatus: async () => ({ unlocked: true, licenseServerConfigured: false, licenseMode: 'local' }),
+        getStatus: async () => ({
+          unlocked: true,
+          licenseServerConfigured: false,
+          licenseMode: 'local',
+          seats: undefined,
+          licenseValidUntil: null,
+          licenseLastVerifiedAt: null,
+        }),
         setKey: async () => ({ ok: true, unlocked: true }),
         refreshOnline: async () => ({ ok: true, unlocked: true }),
       },

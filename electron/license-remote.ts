@@ -11,6 +11,8 @@ function readStoredLicenseKey(db: Database.Database): string {
 
 /** ISO timestamp — entitlement OK until this instant (renewed by successful server checks). */
 export const LICENSE_VALID_UNTIL_KEY = 'license_entitlement_valid_until';
+/** ISO timestamp — last successful online validation (or local save in hybrid/local path). */
+export const LICENSE_LAST_VERIFIED_AT_KEY = 'license_last_verified_at';
 export const LICENSE_DEVICE_ID_KEY = 'license_device_id';
 export const LICENSE_OFFLINE_GRACE_SEC_KEY = 'license_offline_grace_sec';
 
@@ -49,6 +51,7 @@ export function isOnlineEntitlementSatisfied(db: Database.Database): boolean {
 export function clearOnlineEntitlementCache(db: Database.Database): void {
   db.prepare(`DELETE FROM settings WHERE key = ?`).run(LICENSE_VALID_UNTIL_KEY);
   db.prepare(`DELETE FROM settings WHERE key = ?`).run(LICENSE_OFFLINE_GRACE_SEC_KEY);
+  db.prepare(`DELETE FROM settings WHERE key = ?`).run(LICENSE_LAST_VERIFIED_AT_KEY);
 }
 
 export async function refreshLicenseOnline(db: Database.Database): Promise<{ ok: boolean; error?: string }> {
@@ -106,8 +109,10 @@ export async function refreshLicenseOnline(db: Database.Database): Promise<{ ok:
     const refreshAfter =
       typeof data.refresh_after_sec === 'number' && data.refresh_after_sec > 0 ? data.refresh_after_sec : 86400 * 3;
     const validUntil = new Date(Date.now() + refreshAfter * 1000).toISOString();
+    const nowIso = new Date().toISOString();
     db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(LICENSE_VALID_UNTIL_KEY, validUntil);
     db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(LICENSE_OFFLINE_GRACE_SEC_KEY, String(refreshAfter));
+    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(LICENSE_LAST_VERIFIED_AT_KEY, nowIso);
     return { ok: true };
   } catch {
     clearTimeout(timer);

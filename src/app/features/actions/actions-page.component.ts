@@ -52,7 +52,7 @@ const ADVANCED: ActionItem[] = [
             <div class="mt-3 flex flex-col gap-2">
               <button
                 type="button"
-                [disabled]="busy() || (a.pro && !proEntitled())"
+                [disabled]="busy() || isViewer() || (a.pro && !proEntitled())"
                 (click)="newWorkflowWithAction(a)"
                 class="w-full rounded-lg border border-tf-border py-2 text-sm text-neutral-200 transition hover:bg-neutral-800 disabled:opacity-50"
               >
@@ -60,7 +60,7 @@ const ADVANCED: ActionItem[] = [
               </button>
               <button
                 type="button"
-                [disabled]="busy() || (a.pro && !proEntitled())"
+                [disabled]="busy() || isViewer() || (a.pro && !proEntitled())"
                 (click)="openAppendModal(a)"
                 class="w-full rounded-lg py-2 text-sm text-tf-green hover:underline disabled:opacity-50"
               >
@@ -86,7 +86,7 @@ const ADVANCED: ActionItem[] = [
             <div class="mt-3 flex flex-col gap-2">
               <button
                 type="button"
-                [disabled]="busy() || (a.pro && !proEntitled())"
+                [disabled]="busy() || isViewer() || (a.pro && !proEntitled())"
                 (click)="newWorkflowWithAction(a)"
                 class="w-full rounded-lg border border-tf-border py-2 text-sm text-neutral-200 transition hover:bg-neutral-800 disabled:opacity-50"
               >
@@ -94,7 +94,7 @@ const ADVANCED: ActionItem[] = [
               </button>
               <button
                 type="button"
-                [disabled]="busy() || (a.pro && !proEntitled())"
+                [disabled]="busy() || isViewer() || (a.pro && !proEntitled())"
                 (click)="openAppendModal(a)"
                 class="w-full rounded-lg py-2 text-sm text-tf-green hover:underline disabled:opacity-50"
               >
@@ -157,11 +157,17 @@ export class ActionsPageComponent implements OnInit {
   protected readonly workflowChoices = signal<WorkflowDto[]>([]);
   protected selectedWorkflowId = '';
   protected readonly proEntitled = signal(false);
+  protected readonly isViewer = signal(false);
 
   async ngOnInit(): Promise<void> {
     try {
       const { unlocked } = await this.ipc.api.entitlement.getStatus();
       this.proEntitled.set(unlocked);
+      if (unlocked) {
+        const team = (await this.ipc.api.team.list()) as Array<{ is_self: number; role: string }>;
+        const self = team.find((m) => m.is_self === 1);
+        this.isViewer.set(self?.role === 'Viewer');
+      }
     } catch {
       this.proEntitled.set(false);
     }
@@ -184,6 +190,10 @@ export class ActionsPageComponent implements OnInit {
   }
 
   async newWorkflowWithAction(a: ActionItem): Promise<void> {
+    if (this.isViewer()) {
+      this.toast.warning('Viewers cannot create workflows from the catalog.');
+      return;
+    }
     this.busy.set(true);
     try {
       const id = await this.ipc.api.workflows.createFromStarter({
@@ -207,6 +217,10 @@ export class ActionsPageComponent implements OnInit {
   }
 
   async openAppendModal(a: ActionItem): Promise<void> {
+    if (this.isViewer()) {
+      this.toast.warning('Viewers cannot modify workflows from the catalog.');
+      return;
+    }
     const list = await this.ipc.api.workflows.list();
     this.workflowChoices.set(list);
     this.selectedWorkflowId = list[0]?.id ?? '';
@@ -219,6 +233,10 @@ export class ActionsPageComponent implements OnInit {
   }
 
   async confirmAppend(): Promise<void> {
+    if (this.isViewer()) {
+      this.toast.warning('Viewers cannot modify workflows.');
+      return;
+    }
     const target = this.appendTarget();
     const wfId = this.selectedWorkflowId;
     if (!target || !wfId) return;

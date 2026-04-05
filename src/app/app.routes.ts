@@ -36,7 +36,11 @@ export const routes: Routes = [
       },
       {
         path: 'variables',
-        canActivate: [proEntitlementGuard],
+        canActivate: [proEntitlementGuard, viewerBlockGuard],
+        data: {
+          viewerBlockMessage: 'Viewers cannot manage variables on this device.',
+          viewerRedirect: ['/workflows'],
+        },
         loadComponent: () => import('./features/variables/variables-page.component').then((m) => m.VariablesPageComponent),
       },
       {

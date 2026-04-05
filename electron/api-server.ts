@@ -11,6 +11,7 @@ type ApiRequest = express.Request & { tfScopes?: string[] };
 
 const SCOPE_ALL = '*';
 const SCOPE_WORKFLOWS_READ = 'workflows:read';
+const SCOPE_WORKFLOWS_WRITE = 'workflows:write';
 const SCOPE_WORKFLOWS_RUN = 'workflows:run';
 const SCOPE_LOGS_READ = 'logs:read';
 const SCOPE_VARIABLES_READ = 'variables:read';
@@ -80,6 +81,27 @@ export function startApiServer(
     }
     next();
   };
+
+  app.post('/v1/workflows', need(SCOPE_WORKFLOWS_WRITE), (req, res) => {
+    const body = req.body as { name?: string; description?: string };
+    const name = String(body?.name ?? '').trim() || 'Untitled workflow';
+    const description = String(body?.description ?? '');
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const pr = (
+      db.prepare(`SELECT value FROM settings WHERE key = 'default_workflow_priority'`).get() as { value: string } | undefined
+    )?.value?.toLowerCase();
+    const priority = pr === 'high' || pr === 'low' ? pr : 'normal';
+    db.prepare(
+      `INSERT INTO workflows (id, name, description, enabled, priority, tags, draft, run_count, created_at, updated_at)
+       VALUES (?, ?, ?, 1, ?, '[]', 1, 0, ?, ?)`
+    ).run(id, name, description, priority, now, now);
+    db.prepare(
+      `INSERT INTO audit_logs (id, user_id, action, resource, ip, status, created_at) VALUES (?, ?, 'workflow.create', ?, ?, 'Success', ?)`
+    ).run(randomUUID(), 'api', id, req.ip ?? 'localhost', now);
+    triggers.reloadFromDatabase();
+    res.status(201).json({ id, workflow_id: id });
+  });
 
   app.get('/v1/workflows', need(SCOPE_WORKFLOWS_READ), (_req, res) => {
     const workflows = db

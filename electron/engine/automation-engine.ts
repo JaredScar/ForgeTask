@@ -1,9 +1,11 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
+import { shell } from 'electron';
 import type { WorkflowNodeRow } from '../types';
 import { evaluateCondition } from './condition-evaluator';
 import { executeActionNode } from './action-executor';
 import { loadVariableMap } from './variable-interpolation';
+import { orderWorkflowNodesForRun } from './workflow-node-order';
 
 export type WorkflowRunNotify = (payload: { logId: string; workflowId: string }) => void;
 
@@ -106,11 +108,12 @@ export class AutomationEngine {
     /* So the renderer can show the running row and live step panel before the run finishes. */
     this.notifyRenderer?.({ logId, workflowId });
 
-    const nodes = this.db
+    const rawNodes = this.db
       .prepare(
         `SELECT id, workflow_id, node_type, kind, config, position_x, position_y, sort_order FROM workflow_nodes WHERE workflow_id = ? ORDER BY sort_order ASC`
       )
       .all(workflowId) as WorkflowNodeRow[];
+    const nodes = orderWorkflowNodesForRun(this.db, workflowId, rawNodes);
 
     const vars = loadVariableMap(this.db);
     const context: Record<string, string> = {};
@@ -201,6 +204,19 @@ export class AutomationEngine {
           lastError ?? null,
           logId
         );
+
+      if (finalStatus === 'failure') {
+        const soundOn = (
+          this.db.prepare(`SELECT value FROM settings WHERE key = 'sound_on_workflow_failure'`).get() as { value: string } | undefined
+        )?.value;
+        if (soundOn === '1' || soundOn === 'true') {
+          try {
+            shell.beep();
+          } catch {
+            /* ignore */
+          }
+        }
+      }
 
       const wf = this.db.prepare(`SELECT run_count FROM workflows WHERE id = ?`).get(workflowId) as { run_count: number };
       const summary =

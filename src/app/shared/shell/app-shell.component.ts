@@ -30,6 +30,7 @@ export class AppShellComponent implements OnInit, OnDestroy {
   protected readonly selfMember = signal<{ display_name: string; role: string } | null>(null);
   protected readonly isViewerRole = signal(false);
   protected readonly showHotkeysLegend = signal(false);
+  protected readonly toastPosition = signal<'top' | 'bottom'>('bottom');
   protected readonly stats = signal<AppStats>({
     active: 0,
     queue: 0,
@@ -47,6 +48,14 @@ export class AppShellComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     this.migrateLegacyOnboardingKey();
+    if (this.ipc.isElectron) {
+      try {
+        const tp = await this.ipc.api.settings.get('toast_position');
+        if (tp === 'top' || tp === 'bottom') this.toastPosition.set(tp);
+      } catch {
+        /* ignore */
+      }
+    }
     await this.refreshCounts();
     await this.maybeOnboarding();
     this.timer = setInterval(() => void this.refreshCounts(), 5000);
@@ -143,6 +152,10 @@ export class AppShellComponent implements OnInit, OnDestroy {
     }
   }
 
+  protected toastStackClass(): string {
+    return this.toastPosition() === 'top' ? 'top-16' : 'bottom-6';
+  }
+
   protected toastBoxClass(level: ToastLevel): Record<string, boolean> {
     const base = {
       'pointer-events-auto flex items-start justify-between gap-2 rounded-lg border px-3 py-2 text-sm shadow-lg': true,
@@ -175,6 +188,10 @@ export class AppShellComponent implements OnInit, OnDestroy {
       const self = team.find((m) => m.is_self === 1);
       this.selfMember.set(unlocked && self ? { display_name: self.display_name, role: self.role } : null);
       this.isViewerRole.set(Boolean(unlocked && self?.role === 'Viewer'));
+      if (this.ipc.isElectron) {
+        const tp = await this.ipc.api.settings.get('toast_position');
+        if (tp === 'top' || tp === 'bottom') this.toastPosition.set(tp);
+      }
     } catch {
       /* ignore */
     }

@@ -2,7 +2,7 @@
 
 > **Source of truth for scope:** [PLAN.md](./PLAN.md) (full product plan, history, and acceptance notes).  
 > **This file:** a **backlog-only** view — items **not** fully done per §22 and follow-up notes. Update both when you ship features.  
-> **Last synced:** 2026-04-05 (update this when you change backlog)
+> **Last synced:** 2026-04-05 (MVP gaps pass: settings extensions, edges engine, cron replay, Windows input_simulation, API write, RBAC polish, entitlement fields, AI refine)
 
 ---
 
@@ -18,7 +18,7 @@
 
 | Item | PLAN § | Notes |
 |------|--------|--------|
-| Settings (remaining toggles) | §14.1 | Core prefs + ZIP + **reset preferences to defaults** + **danger-zone erase automation data** ✅. Still open: language, default priority, log retention preset/forever UI, log clear on startup, sound/position, theme/accent, developer default JSON, etc. |
+| Settings (remaining toggles) | §14.1 | **Shipped in this pass:** language (`ui_locale`), default workflow priority, log retention forever flag, clear logs on startup, replay missed cron, sound on failure, toast position, theme/accent, Builder default JSON, license “last verified” / valid-until / seats copy. **Still open:** server-side log purge by `log_retention_days` / forever (engine job not wired yet). |
 
 ---
 
@@ -26,7 +26,7 @@
 
 | Item | PLAN § | Notes |
 |------|--------|--------|
-| `input_simulation` action | §15.1 | `kill_process` / `file_operation` ✅. Needs native input automation (`robotjs` / `@nut-tree/nut-js` or similar) + docs for rebuild. |
+| `input_simulation` action | §15.1 | **Windows:** PowerShell `System.Windows.Forms.SendKeys` via UTF-8 base64 (no native addon). **Non-Windows:** still returns a clear “not implemented” error. |
 
 ---
 
@@ -34,39 +34,29 @@
 
 | # | Task | PLAN § | Status |
 |---|------|--------|--------|
-| 1 | Visual graph canvas builder (pan/zoom, edges, engine follows graph) | §3.3 | Not started (flagship V2). |
-| 4 | AI conversation / multi-turn polish | §10.3 | Partial: history + trim ✅; **draft-edit** UX (“change trigger to 8 AM” without always creating a new workflow) open. |
-| 5 | Multiple API keys + scopes | §12.1, §12.2 | Not done (see also §12.3 — some endpoints ✅; multi-key UI + enforcement still planned). |
-| 8 | Trigger state persistence + missed-trigger replay | §16.2 | Not done. |
-| 9 | Role-based UI (Viewer vs Editor/Admin) | §11.3 | Not done. |
+| 1 | Visual graph canvas builder (pan/zoom, edges, engine follows graph) | §3.3 | **Partial:** list-order edges persisted + topological run order in engine when edges exist. **Not started:** free-form canvas / branching UI. |
+| 4 | AI conversation / multi-turn polish | §10.3 | **Partial:** **“Refine last draft”** updates the same workflow via `workflows.update` (no new workflow). Further polish always possible. |
+| 5 | Multiple API keys + scopes | §12.1, §12.2 | **Partial:** scoped keys + enforcement existed; **added** `workflows:write` + `POST /v1/workflows`. |
+| 8 | Trigger state persistence + missed-trigger replay | §16.2 | **Partial:** `trigger_state` + **optional `replay_missed_cron`** (one catch-up vs previous cron tick after reload). |
+| 9 | Role-based UI (Viewer vs Editor/Admin) | §11.3 | **Partial:** Builder + **Variables** route guard; **Logs** clear, **Team** invite, **Triggers/Actions** catalog create/append blocked for Viewers; Workflows already had viewer UX. |
 | 11 | Settings — remainder after backup ZIP | §14.1 | Same as Phase 1 §14.1 row. |
-| 12 | Online license validation (full product story) | §20.9 | Partial: client pieces (`license-remote.ts`, hybrid / `online_strict`, refresh IPC). **Hosted license API + full §20.9.6** out of repo. |
+| 12 | Online license validation (full product story) | §20.9 | Partial: **last verified** timestamp on successful online check + Settings/Team display of seats / valid-until. **Hosted license API + full §20.9.6** out of repo. |
 
 ### Entitlement / commercial (§20.8 still open)
 
 | Task | PLAN § |
 |------|--------|
 | Online validation — complete policy, UX, grace, revocation story | §20.9 |
-| Per-seat enforcement (`seats` in payload + Team UI) | §20.8, §22 Phase 4 |
-| `*appIsTier` / global license signal directive | §20.8 |
+| Per-seat **enforcement** (active seats / activations) | §20.8, §22 Phase 4 |
+| `*tfProIf` / global license signal directive | §20.8 · **directive added** (`TfProIfDirective`) — wire into templates as needed |
 | Audit log when org key saved / cleared | §20.8 · ✅ `entitlement.saved` / `entitlement.cleared` |
-| Settings: “Connected to license service / last verified …” copy | §20.7 future note |
+| Settings: “Connected to license service / last verified …” copy | §20.7 future note · **partially addressed** via last-verified + valid-until lines |
 
 ---
 
 ## Phase 4 — future platform (§22)
 
-| # | Task | PLAN § / note |
-|---|------|----------------|
-| 1 | Smart suggestions (repetitive behaviour) | §22 |
-| 2 | Community marketplace submissions | §22 |
-| 3 | Cloud sync (workflows + logs) | §22 |
-| 4 | Team collaboration (real invites, shared workspace) | §22 |
-| 5 | macOS support | §22 |
-| 6 | Plugin / extension system | §22 |
-| 7 | Mobile companion | §22 |
-| 8 | **License server** (host HTTPS API, activations DB, revoke, rate limits) | §20.9.6, §22 |
-| 9 | Per-seat enforcement (tie to server activations) | §20.9, §22 |
+(Unchanged — see prior PLAN-REMAINING / PLAN.md §22 for marketplace, cloud sync, license server, etc.)
 
 ---
 

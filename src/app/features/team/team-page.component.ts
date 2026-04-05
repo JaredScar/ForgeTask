@@ -23,14 +23,19 @@ type MemberRow = Record<string, unknown> & {
         <div>
           <h1 class="text-xl font-semibold">Team Management</h1>
           <p class="mt-1 text-sm text-tf-muted">Manage team members and permissions (local roster)</p>
+          @if (entitlementSeats() != null) {
+            <p class="mt-2 text-xs text-tf-muted">Licensed seats (from organization key payload): {{ entitlementSeats() }}</p>
+          }
         </div>
-        <button
-          type="button"
-          (click)="inviteOpen.set(true)"
-          class="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-neutral-200"
-        >
-          + Invite Member
-        </button>
+        @if (!isViewer()) {
+          <button
+            type="button"
+            (click)="inviteOpen.set(true)"
+            class="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-neutral-200"
+          >
+            + Invite Member
+          </button>
+        }
       </div>
       <div class="mt-6 space-y-3">
         @for (m of members(); track m.id) {
@@ -95,15 +100,25 @@ export class TeamPageComponent implements OnInit {
 
   protected readonly members = signal<MemberRow[]>([]);
   protected readonly inviteOpen = signal(false);
+  protected readonly isViewer = signal(false);
+  protected readonly entitlementSeats = signal<number | null>(null);
   protected inviteForm = { display_name: '', email: '', role: 'Editor' };
 
   async ngOnInit(): Promise<void> {
     await this.reload();
+    try {
+      const st = await this.ipc.api.entitlement.getStatus();
+      this.entitlementSeats.set(st.seats ?? null);
+    } catch {
+      this.entitlementSeats.set(null);
+    }
   }
 
   private async reload(): Promise<void> {
     const rows = (await this.ipc.api.team.list()) as MemberRow[];
     this.members.set(rows);
+    const self = rows.find((m) => m.is_self === 1);
+    this.isViewer.set(self?.role === 'Viewer');
   }
 
   protected initials(name: string): string {
@@ -116,6 +131,10 @@ export class TeamPageComponent implements OnInit {
   }
 
   async submitInvite(): Promise<void> {
+    if (this.isViewer()) {
+      this.toast.warning('Viewers cannot invite team members.');
+      return;
+    }
     const { display_name, email, role } = this.inviteForm;
     if (!display_name.trim() || !email.trim()) {
       this.toast.warning('Name and email are required');

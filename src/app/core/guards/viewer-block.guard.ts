@@ -1,10 +1,11 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
+import type { ActivatedRouteSnapshot } from '@angular/router';
 import { IpcService } from '../services/ipc.service';
 import { ToastService } from '../services/toast.service';
 
-/** Blocks the Builder for Enterprise team members with the Viewer role. */
-export const viewerBlockGuard: CanActivateFn = async () => {
+/** Blocks edit surfaces (Builder, Variables, …) for team members with the Viewer role. */
+export const viewerBlockGuard: CanActivateFn = async (route: ActivatedRouteSnapshot) => {
   const ipc = inject(IpcService);
   const router = inject(Router);
   const toast = inject(ToastService);
@@ -24,7 +25,10 @@ export const viewerBlockGuard: CanActivateFn = async () => {
   } catch {
     return true;
   }
-  toast.warning('Viewers cannot edit workflows in the Builder.');
-  await router.navigate(['/workflows']);
+  const msg =
+    (route.data['viewerBlockMessage'] as string | undefined) ?? 'Viewers cannot edit workflows in the Builder.';
+  const redirect = (route.data['viewerRedirect'] as string[] | undefined) ?? ['/workflows'];
+  toast.warning(msg);
+  await router.navigate(redirect);
   return false;
 };

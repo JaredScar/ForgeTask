@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import CronExpressionParser from 'cron-parser';
 import * as schedule from 'node-schedule';
 import chokidar from 'chokidar';
 import type { FSWatcher } from 'chokidar';
@@ -130,7 +131,55 @@ export class TriggerManager {
       }
     }
     this.attachPowerEventListeners(rows);
+    this.replayMissedCronIfEnabled(rows);
     this.engineReady = true;
+  }
+
+  private getSetting(key: string, defaultVal: string): string {
+    const row = this.db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
+    return row?.value ?? defaultVal;
+  }
+
+  /** If `replay_missed_cron` is on, run once when the last fire is before the previous scheduled cron tick (§16.2). */
+  private replayMissedCronIfEnabled(rows: TriggerRow[]): void {
+    const on = this.getSetting('replay_missed_cron', '0');
+    if (on !== '1' && on !== 'true') return;
+
+    const cronRows = rows.filter((r) => r.kind === 'time_schedule');
+    for (const r of cronRows) {
+      let config: Record<string, unknown> = {};
+      try {
+        config = JSON.parse(r.config) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const cron = String(config['cron'] ?? '0 9 * * *');
+      let prevScheduled: Date;
+      try {
+        const expr = CronExpressionParser.parse(cron, { currentDate: new Date() });
+        prevScheduled = expr.prev().toDate();
+      } catch {
+        continue;
+      }
+
+      let lastMs = 0;
+      try {
+        const st = this.db
+          .prepare(`SELECT last_fired_at FROM trigger_state WHERE workflow_id = ? AND trigger_node_id = ?`)
+          .get(r.workflow_id, r.node_id) as { last_fired_at: string } | undefined;
+        if (st?.last_fired_at) {
+          const t = new Date(st.last_fired_at).getTime();
+          if (!Number.isNaN(t)) lastMs = t;
+        }
+      } catch {
+        /* no trigger_state */
+      }
+
+      if (lastMs < prevScheduled.getTime() - 500) {
+        void this.engine.runWorkflow(r.workflow_id, 'time_schedule');
+        this.recordTriggerFire(r.workflow_id, r.node_id);
+      }
+    }
   }
 
   /** Electron `powerMonitor` events (AC/battery, sleep, lock screen where supported). */

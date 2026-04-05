@@ -71,6 +71,19 @@ import { ConfirmDialogService } from '../../core/services/confirm-dialog.service
         @if (entitlementStatus() === 'network') {
           <p class="mt-2 text-xs text-amber-200">Could not reach the license server. Try again or check your network.</p>
         }
+        @if (licenseLastVerifiedAt()) {
+          <p class="mt-2 text-xs text-tf-muted">
+            Last verified with license service: <span class="text-neutral-300">{{ licenseLastVerifiedAt() }}</span>
+          </p>
+        }
+        @if (licenseValidUntilDisplay()) {
+          <p class="mt-1 text-xs text-tf-muted">
+            Cached valid-until (online checks): <span class="text-neutral-300">{{ licenseValidUntilDisplay() }}</span>
+          </p>
+        }
+        @if (licenseSeats() != null) {
+          <p class="mt-1 text-xs text-tf-muted">Seats in key payload: {{ licenseSeats() }}</p>
+        }
       </div>
       <div class="rounded-xl border border-tf-border bg-tf-card p-4">
         <h2 class="text-sm font-medium">OpenAI API Key</h2>
@@ -96,15 +109,34 @@ import { ConfirmDialogService } from '../../core/services/confirm-dialog.service
       </div>
       <div class="rounded-xl border border-tf-border bg-tf-card p-4">
         <h2 class="text-sm font-medium">Automation &amp; logs</h2>
-        <p class="mt-1 text-xs text-tf-muted">Engine and retention preferences (read by the app on next releases).</p>
+        <p class="mt-1 text-xs text-tf-muted">Engine, retention, and trigger catch-up (stored locally; some features apply after restart).</p>
+        <label class="mt-4 flex items-center gap-2 text-sm text-neutral-200">
+          <input type="checkbox" [(ngModel)]="logRetentionForever" />
+          Keep logs forever (no automatic purge by age — future engine use)
+        </label>
         <label class="mt-4 block text-xs text-tf-muted">Log retention (days)</label>
         <input
           type="number"
           min="1"
           max="3650"
           [(ngModel)]="logRetentionDays"
-          class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm"
+          [disabled]="logRetentionForever"
+          class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm disabled:opacity-50"
         />
+        <label class="mt-4 flex items-center gap-2 text-sm text-neutral-200">
+          <input type="checkbox" [(ngModel)]="clearLogsOnStartup" />
+          Clear all execution logs on next app launch
+        </label>
+        <label class="mt-3 flex items-center gap-2 text-sm text-neutral-200">
+          <input type="checkbox" [(ngModel)]="replayMissedCron" />
+          Replay missed cron runs after restart (one catch-up per schedule)
+        </label>
+        <label class="mt-4 block text-xs text-tf-muted">Default priority for new workflows</label>
+        <select [(ngModel)]="defaultWorkflowPriority" class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm text-neutral-200">
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+          <option value="low">Low</option>
+        </select>
         <label class="mt-4 flex items-center gap-2 text-sm text-neutral-200">
           <input type="checkbox" [(ngModel)]="engineAutoStart" />
           Prefer engine auto-start on launch
@@ -112,6 +144,10 @@ import { ConfirmDialogService } from '../../core/services/confirm-dialog.service
         <label class="mt-3 flex items-center gap-2 text-sm text-neutral-200">
           <input type="checkbox" [(ngModel)]="notifyDesktop" />
           Desktop notifications for workflow events
+        </label>
+        <label class="mt-3 flex items-center gap-2 text-sm text-neutral-200">
+          <input type="checkbox" [(ngModel)]="soundOnWorkflowFailure" />
+          System beep when a workflow run fails
         </label>
         <label class="mt-4 block text-xs text-tf-muted">Max concurrent workflow runs (stored for future engine use)</label>
         <input
@@ -131,6 +167,41 @@ import { ConfirmDialogService } from '../../core/services/confirm-dialog.service
         @if (savedPrefs()) {
           <p class="mt-2 text-xs text-tf-green">Preferences saved.</p>
         }
+      </div>
+
+      <div class="rounded-xl border border-tf-border bg-tf-card p-4">
+        <h2 class="text-sm font-medium">UI &amp; appearance</h2>
+        <p class="mt-1 text-xs text-tf-muted">Language, theme, accent, toasts, and Builder defaults (applied after save / reload where noted).</p>
+        <label class="mt-4 block text-xs text-tf-muted">Language (HTML lang)</label>
+        <select [(ngModel)]="uiLocale" class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm text-neutral-200">
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+          <option value="fr">Français</option>
+        </select>
+        <label class="mt-4 block text-xs text-tf-muted">Theme</label>
+        <select [(ngModel)]="uiTheme" class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm text-neutral-200">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+        <label class="mt-4 block text-xs text-tf-muted">Accent</label>
+        <select [(ngModel)]="uiAccent" class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm text-neutral-200">
+          <option value="green">Green</option>
+          <option value="blue">Blue</option>
+          <option value="amber">Amber</option>
+          <option value="violet">Violet</option>
+        </select>
+        <label class="mt-4 block text-xs text-tf-muted">Toast stack position</label>
+        <select [(ngModel)]="toastPosition" class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm text-neutral-200">
+          <option value="top">Top</option>
+          <option value="bottom">Bottom</option>
+        </select>
+        <label class="mt-4 flex items-center gap-2 text-sm text-neutral-200">
+          <input type="checkbox" [(ngModel)]="builderShowJsonDefault" />
+          Builder: open “Show JSON” by default for node config
+        </label>
+        <button type="button" (click)="savePrefs()" class="mt-4 rounded-lg bg-tf-green px-4 py-2 text-sm font-medium text-black">
+          Save preferences
+        </button>
       </div>
 
       <div class="rounded-xl border border-tf-border bg-tf-card p-4">
@@ -160,7 +231,7 @@ import { ConfirmDialogService } from '../../core/services/confirm-dialog.service
       <div class="rounded-xl border border-tf-border bg-tf-card p-4">
         <h2 class="text-sm font-medium">Maintenance</h2>
         <p class="mt-1 text-xs text-tf-muted">
-          Reset automation-related preferences (retention, engine auto-start, notifications, concurrency, confirm delete) to defaults.
+          Reset automation, UI, and trigger preferences (everything in “Automation &amp; logs” and “UI &amp; appearance”) to defaults.
           Does not remove your license, OpenAI key, or workflows.
         </p>
         <button
@@ -199,10 +270,20 @@ export class SettingsPageComponent implements OnInit {
   protected openaiKey = '';
   protected entitlementKey = '';
   protected logRetentionDays = 30;
+  protected logRetentionForever = false;
+  protected clearLogsOnStartup = false;
+  protected replayMissedCron = false;
+  protected defaultWorkflowPriority: 'normal' | 'high' | 'low' = 'normal';
+  protected soundOnWorkflowFailure = false;
   protected engineAutoStart = true;
   protected notifyDesktop = true;
   protected maxConcurrentWorkflows = 5;
   protected confirmDeleteWorkflow = true;
+  protected uiLocale = 'en';
+  protected uiTheme: 'dark' | 'light' = 'dark';
+  protected uiAccent: 'green' | 'blue' | 'amber' | 'violet' = 'green';
+  protected toastPosition: 'top' | 'bottom' = 'bottom';
+  protected builderShowJsonDefault = false;
   protected readonly savedKey = signal(false);
   protected readonly savedPrefs = signal(false);
   protected readonly showUnlockBanner = signal(false);
@@ -210,6 +291,9 @@ export class SettingsPageComponent implements OnInit {
   protected readonly entitlementStatus = signal<'unset' | 'ok' | 'invalid' | 'network'>('unset');
   protected readonly licenseServerConfigured = signal(false);
   protected readonly licenseMode = signal('local');
+  protected readonly licenseLastVerifiedAt = signal<string | null>(null);
+  protected readonly licenseValidUntilDisplay = signal<string | null>(null);
+  protected readonly licenseSeats = signal<number | null>(null);
 
   async ngOnInit(): Promise<void> {
     await this.loadSettingsForm();
@@ -223,6 +307,9 @@ export class SettingsPageComponent implements OnInit {
     this.licenseServerConfigured.set(!!st.licenseServerConfigured);
     this.licenseMode.set(st.licenseMode ?? 'local');
     if (st.unlocked) this.entitlementStatus.set('ok');
+    this.licenseLastVerifiedAt.set(st.licenseLastVerifiedAt ?? null);
+    this.licenseValidUntilDisplay.set(st.licenseValidUntil ?? null);
+    this.licenseSeats.set(st.seats ?? null);
 
     const v = await this.ipc.api.settings.get('openai_api_key');
     this.openaiKey = v ?? '';
@@ -236,6 +323,27 @@ export class SettingsPageComponent implements OnInit {
     if (mc != null && mc !== '') this.maxConcurrentWorkflows = Math.min(50, Math.max(1, parseInt(mc, 10) || 5));
     const cd = await this.ipc.api.settings.get('confirm_delete_workflow');
     if (cd != null) this.confirmDeleteWorkflow = cd === '1' || cd === 'true';
+    const lf = await this.ipc.api.settings.get('log_retention_forever');
+    if (lf != null) this.logRetentionForever = lf === '1' || lf === 'true';
+    const cls = await this.ipc.api.settings.get('clear_logs_on_startup');
+    if (cls != null) this.clearLogsOnStartup = cls === '1' || cls === 'true';
+    const rmc = await this.ipc.api.settings.get('replay_missed_cron');
+    if (rmc != null) this.replayMissedCron = rmc === '1' || rmc === 'true';
+    const dfp = await this.ipc.api.settings.get('default_workflow_priority');
+    if (dfp === 'high' || dfp === 'low' || dfp === 'normal') this.defaultWorkflowPriority = dfp;
+    const snd = await this.ipc.api.settings.get('sound_on_workflow_failure');
+    if (snd != null) this.soundOnWorkflowFailure = snd === '1' || snd === 'true';
+    const loc = await this.ipc.api.settings.get('ui_locale');
+    if (loc === 'en' || loc === 'de' || loc === 'fr') this.uiLocale = loc;
+    const th = await this.ipc.api.settings.get('ui_theme');
+    if (th === 'dark' || th === 'light') this.uiTheme = th;
+    const ac = await this.ipc.api.settings.get('ui_accent');
+    if (ac === 'green' || ac === 'blue' || ac === 'amber' || ac === 'violet') this.uiAccent = ac;
+    const tp = await this.ipc.api.settings.get('toast_position');
+    if (tp === 'top' || tp === 'bottom') this.toastPosition = tp;
+    const bj = await this.ipc.api.settings.get('builder_show_json_default');
+    if (bj != null) this.builderShowJsonDefault = bj === '1' || bj === 'true';
+    this.applyUiToDocument();
   }
 
   async saveEntitlement(): Promise<void> {
@@ -245,6 +353,7 @@ export class SettingsPageComponent implements OnInit {
       this.entitlementStatus.set(res.unlocked ? 'ok' : 'unset');
       this.toast.success(res.unlocked ? 'License saved' : 'License cleared');
       this.showUnlockBanner.set(false);
+      await this.loadSettingsForm();
       return;
     }
     if (res.error === 'invalid_key') {
@@ -262,6 +371,7 @@ export class SettingsPageComponent implements OnInit {
     if (r.ok && r.unlocked) {
       this.entitlementStatus.set('ok');
       this.toast.success('License verified');
+      await this.loadSettingsForm();
     } else {
       this.toast.error(r.error ? `Check failed: ${r.error}` : 'License check failed');
     }
@@ -281,13 +391,37 @@ export class SettingsPageComponent implements OnInit {
 
   async savePrefs(): Promise<void> {
     await this.ipc.api.settings.set('log_retention_days', String(this.logRetentionDays));
+    await this.ipc.api.settings.set('log_retention_forever', this.logRetentionForever ? '1' : '0');
+    await this.ipc.api.settings.set('clear_logs_on_startup', this.clearLogsOnStartup ? '1' : '0');
+    await this.ipc.api.settings.set('replay_missed_cron', this.replayMissedCron ? '1' : '0');
+    await this.ipc.api.settings.set('default_workflow_priority', this.defaultWorkflowPriority);
+    await this.ipc.api.settings.set('sound_on_workflow_failure', this.soundOnWorkflowFailure ? '1' : '0');
     await this.ipc.api.settings.set('engine_auto_start', this.engineAutoStart ? '1' : '0');
     await this.ipc.api.settings.set('notify_desktop', this.notifyDesktop ? '1' : '0');
     await this.ipc.api.settings.set('max_concurrent_workflows', String(this.maxConcurrentWorkflows));
     await this.ipc.api.settings.set('confirm_delete_workflow', this.confirmDeleteWorkflow ? '1' : '0');
+    await this.ipc.api.settings.set('ui_locale', this.uiLocale);
+    await this.ipc.api.settings.set('ui_theme', this.uiTheme);
+    await this.ipc.api.settings.set('ui_accent', this.uiAccent);
+    await this.ipc.api.settings.set('toast_position', this.toastPosition);
+    await this.ipc.api.settings.set('builder_show_json_default', this.builderShowJsonDefault ? '1' : '0');
+    this.applyUiToDocument();
     this.savedPrefs.set(true);
     this.toast.success('Preferences saved');
     setTimeout(() => this.savedPrefs.set(false), 2000);
+  }
+
+  private applyUiToDocument(): void {
+    if (typeof document === 'undefined') return;
+    document.documentElement.lang = this.uiLocale;
+    document.documentElement.setAttribute('data-theme', this.uiTheme);
+    const map: Record<string, string> = {
+      green: '#22c55e',
+      blue: '#3b82f6',
+      amber: '#f59e0b',
+      violet: '#a78bfa',
+    };
+    document.documentElement.style.setProperty('--color-tf-green', map[this.uiAccent] ?? map['green']);
   }
 
   async exportZip(): Promise<void> {

@@ -33,6 +33,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html[data-theme='light'] {
+  --color-tf-bg: #f4f4f5;
+  --color-tf-surface: #e4e4e7;
+  --color-tf-card: #ffffff;
+  --color-tf-border: #d4d4d8;
+  --color-tf-muted: #71717a;
+}
+
+html[data-theme='light'] body {
+  color: #18181b;
+}
+
 /* Angular root fills the full window */
 app-root {
   display: flex;

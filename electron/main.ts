@@ -152,6 +152,15 @@ void app
       return;
     }
 
+    try {
+      const row = db.prepare(`SELECT value FROM settings WHERE key = 'clear_logs_on_startup'`).get() as { value: string } | undefined;
+      if (row?.value === '1' || row?.value === 'true') {
+        db.prepare(`DELETE FROM execution_logs`).run();
+      }
+    } catch (e) {
+      console.error('[taskforge] clear_logs_on_startup failed', e);
+    }
+
     const engine = new AutomationEngine(
       db,
       (payload) => {

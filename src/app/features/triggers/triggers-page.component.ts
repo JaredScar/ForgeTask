@@ -47,7 +47,7 @@ const ADVANCED: TriggerItem[] = [
             <p class="mt-2 text-[11px] text-neutral-500">Used in {{ usageCount(t.kind) }} workflow(s)</p>
             <button
               type="button"
-              [disabled]="busy() || (t.pro && !proEntitled())"
+              [disabled]="busy() || isViewer() || (t.pro && !proEntitled())"
               (click)="startWithTrigger(t)"
               class="mt-3 w-full rounded-lg border border-tf-border py-2 text-sm text-neutral-200 transition hover:bg-neutral-800 disabled:opacity-50"
             >
@@ -73,7 +73,7 @@ const ADVANCED: TriggerItem[] = [
             <p class="mt-2 text-[11px] text-neutral-500">Used in {{ usageCount(t.kind) }} workflow(s)</p>
             <button
               type="button"
-              [disabled]="busy() || (t.pro && !proEntitled())"
+              [disabled]="busy() || isViewer() || (t.pro && !proEntitled())"
               (click)="startWithTrigger(t)"
               class="mt-3 w-full rounded-lg border border-tf-border py-2 text-sm text-neutral-200 transition hover:bg-neutral-800 disabled:opacity-50"
             >
@@ -95,11 +95,17 @@ export class TriggersPageComponent implements OnInit {
   protected readonly usage = signal<Record<string, number>>({});
   protected readonly busy = signal(false);
   protected readonly proEntitled = signal(false);
+  protected readonly isViewer = signal(false);
 
   async ngOnInit(): Promise<void> {
     try {
       const { unlocked } = await this.ipc.api.entitlement.getStatus();
       this.proEntitled.set(unlocked);
+      if (unlocked) {
+        const team = (await this.ipc.api.team.list()) as Array<{ is_self: number; role: string }>;
+        const self = team.find((m) => m.is_self === 1);
+        this.isViewer.set(self?.role === 'Viewer');
+      }
     } catch {
       this.proEntitled.set(false);
     }
@@ -122,6 +128,10 @@ export class TriggersPageComponent implements OnInit {
   }
 
   async startWithTrigger(t: TriggerItem): Promise<void> {
+    if (this.isViewer()) {
+      this.toast.warning('Viewers cannot create workflows from the catalog.');
+      return;
+    }
     this.busy.set(true);
     try {
       const id = await this.ipc.api.workflows.createFromStarter({

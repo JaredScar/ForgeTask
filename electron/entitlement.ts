@@ -38,17 +38,16 @@ function entitlementSecretCandidates(): readonly string[] {
 }
 
 /**
- * Validates `tfent1.<base64urlPayload>.<base64urlHmac>` (or the legacy three-part prefix) where HMAC-SHA256(secret, payload) matches.
- * Generate with: `node scripts/generate-entitlement-key.mjs`
+ * Decodes a verified entitlement JWT-shaped key (`tfent1…` / legacy prefix). Returns null if format or HMAC is invalid.
+ * Optional JSON claims: `exp` (unix sec), `seats` (positive int).
  */
-export function validateProEnterpriseKey(raw: string): boolean {
+export function decodeEntitlementPayload(raw: string): { seats?: number; exp?: number } | null {
   const key = raw.trim();
-  if (!key) return false;
-  if (key === DEV_ENTITLEMENT_BYPASS) return true;
+  if (!key || key === DEV_ENTITLEMENT_BYPASS) return null;
   const parts = key.split('.');
-  if (parts.length !== 3 || !KEY_PREFIXES.has(parts[0]!)) return false;
+  if (parts.length !== 3 || !KEY_PREFIXES.has(parts[0]!)) return null;
   const [, payloadB64, sigB64] = parts;
-  if (!payloadB64 || !sigB64) return false;
+  if (!payloadB64 || !sigB64) return null;
   try {
     const a = Buffer.from(sigB64, 'utf8');
     let signatureOk = false;
@@ -60,17 +59,29 @@ export function validateProEnterpriseKey(raw: string): boolean {
         break;
       }
     }
-    if (!signatureOk) return false;
-    try {
-      const payloadJson = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as { exp?: number };
-      if (typeof payloadJson.exp === 'number' && payloadJson.exp < Math.floor(Date.now() / 1000)) return false;
-    } catch {
-      /* non-JSON payload: ignore exp */
-    }
-    return true;
+    if (!signatureOk) return null;
+    const payloadJson = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as { exp?: number; seats?: number };
+    const out: { seats?: number; exp?: number } = {};
+    if (typeof payloadJson.exp === 'number') out.exp = payloadJson.exp;
+    if (typeof payloadJson.seats === 'number' && payloadJson.seats > 0) out.seats = Math.floor(payloadJson.seats);
+    return out;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * Validates `tfent1.<base64urlPayload>.<base64urlHmac>` (or the legacy three-part prefix) where HMAC-SHA256(secret, payload) matches.
+ * Generate with: `node scripts/generate-entitlement-key.mjs`
+ */
+export function validateProEnterpriseKey(raw: string): boolean {
+  const key = raw.trim();
+  if (!key) return false;
+  if (key === DEV_ENTITLEMENT_BYPASS) return true;
+  const decoded = decodeEntitlementPayload(raw);
+  if (!decoded) return false;
+  if (typeof decoded.exp === 'number' && decoded.exp < Math.floor(Date.now() / 1000)) return false;
+  return true;
 }
 
 export function readStoredEntitlementKey(db: Database.Database): string {

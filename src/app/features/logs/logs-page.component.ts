@@ -131,9 +131,11 @@ function upsertLiveStep(steps: LiveStepLine[], line: LiveStepLine): LiveStepLine
           >
             Export JSON
           </button>
-          <button type="button" (click)="clear()" class="h-9 rounded-lg border border-tf-border px-3 text-sm hover:bg-neutral-800">
-            Clear all
-          </button>
+          @if (!isViewer()) {
+            <button type="button" (click)="clear()" class="h-9 rounded-lg border border-tf-border px-3 text-sm hover:bg-neutral-800">
+              Clear all
+            </button>
+          }
         </div>
       </div>
       @if (liveSessions().length > 0) {
@@ -324,8 +326,10 @@ export class LogsPageComponent implements OnInit, OnDestroy {
   protected readonly dateTo = signal('');
   protected readonly triggerFilter = signal('all');
   protected readonly expanded = signal(new Set<string>());
+  protected readonly isViewer = signal(false);
 
   ngOnInit(): void {
+    void this.loadViewerFlag();
     this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((pm) => {
       this.filter.set(pm.get('q') ?? '');
       this.statusFilter.set(pm.get('status') ?? 'all');
@@ -377,6 +381,19 @@ export class LogsPageComponent implements OnInit, OnDestroy {
         list.map((r) => (r.id === logId ? { ...r, steps: [...(r.steps ?? []), line] } : r))
       );
     });
+  }
+
+  private async loadViewerFlag(): Promise<void> {
+    if (!this.ipc.isElectron) return;
+    try {
+      const { unlocked } = await this.ipc.api.entitlement.getStatus();
+      if (!unlocked) return;
+      const team = (await this.ipc.api.team.list()) as Array<{ is_self: number; role: string }>;
+      const self = team.find((m) => m.is_self === 1);
+      this.isViewer.set(self?.role === 'Viewer');
+    } catch {
+      /* ignore */
+    }
   }
 
   protected hasRunningLiveSession(): boolean {
@@ -585,6 +602,10 @@ export class LogsPageComponent implements OnInit, OnDestroy {
   }
 
   async clear(): Promise<void> {
+    if (this.isViewer()) {
+      this.toast.warning('Viewers cannot clear execution logs.');
+      return;
+    }
     const ok = await this.confirmDialog.confirm({
       title: 'Clear logs',
       message: 'Remove all execution logs and step details? This cannot be undone.',

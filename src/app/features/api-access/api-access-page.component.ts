@@ -7,6 +7,7 @@ import { LOCAL_DEV_REST_API_KEY_PLACEHOLDER } from '../../core/local-dev-keys';
 
 const SCOPE_OPTIONS: Array<{ id: string; label: string }> = [
   { id: 'workflows:read', label: 'List & read workflows' },
+  { id: 'workflows:write', label: 'Create workflows (POST /v1/workflows)' },
   { id: 'workflows:run', label: 'Run workflows (POST /v1/workflows/run)' },
   { id: 'logs:read', label: 'Read execution logs' },
   { id: 'variables:read', label: 'Read non-secret variables' },

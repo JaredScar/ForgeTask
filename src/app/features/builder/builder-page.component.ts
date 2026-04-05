@@ -210,6 +210,14 @@ export class BuilderPageComponent implements OnInit, OnDestroy {
     } catch {
       this.proUnlockedSig.set(false);
     }
+    if (this.ipc.isElectron) {
+      try {
+        const def = await this.ipc.api.settings.get('builder_show_json_default');
+        if (def === '1' || def === 'true') this.showJson = true;
+      } catch {
+        /* ignore */
+      }
+    }
 
     this.hotkeySubs = [
       this.hotkeys.saveBuilder$.subscribe(() => void this.save()),
@@ -458,21 +466,31 @@ export class BuilderPageComponent implements OnInit, OnDestroy {
       return;
     }
     try {
+      const nodePayload = this.nodes().map((n) => ({
+        id: n.id,
+        node_type: n.node_type,
+        kind: n.kind,
+        config: typeof n.config === 'string' ? JSON.parse(n.config) : n.config,
+        position_x: n.position_x,
+        position_y: n.position_y,
+        sort_order: n.sort_order,
+      }));
+      const list = this.nodes();
+      const edges = [];
+      for (let i = 0; i < list.length - 1; i++) {
+        edges.push({
+          id: crypto.randomUUID(),
+          source_node_id: list[i].id,
+          target_node_id: list[i + 1].id,
+        });
+      }
       const payload: Record<string, unknown> = {
         id: this.wfId,
         name: w.name,
         draft: false,
         concurrency: this.concurrency(),
-        nodes: this.nodes().map((n) => ({
-          id: n.id,
-          node_type: n.node_type,
-          kind: n.kind,
-          config: typeof n.config === 'string' ? JSON.parse(n.config) : n.config,
-          position_x: n.position_x,
-          position_y: n.position_y,
-          sort_order: n.sort_order,
-        })),
-        edges: [],
+        nodes: nodePayload,
+        edges,
       };
       /* Plain JSON so Electron IPC structured-clone never drops nested data from non-plain objects. */
       const ok = await this.ipc.api.workflows.update(JSON.parse(JSON.stringify(payload)) as Record<string, unknown>);

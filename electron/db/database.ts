@@ -129,8 +129,18 @@ function ensureAppDefaults(db: InstanceType<typeof BetterSqlite3>): void {
 
   const defaults: [string, string][] = [
     ['log_retention_days', '30'],
+    ['log_retention_forever', '0'],
+    ['clear_logs_on_startup', '0'],
     ['engine_auto_start', '1'],
     ['notify_desktop', '1'],
+    ['toast_position', 'bottom'],
+    ['sound_on_workflow_failure', '0'],
+    ['replay_missed_cron', '0'],
+    ['default_workflow_priority', 'normal'],
+    ['ui_locale', 'en'],
+    ['ui_theme', 'dark'],
+    ['ui_accent', 'green'],
+    ['builder_show_json_default', '0'],
     ['max_concurrent_workflows', '5'],
     ['confirm_delete_workflow', '1'],
   ];

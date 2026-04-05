@@ -18,6 +18,7 @@ import {
   runWakeOnLan,
   runZipArchive,
 } from '../actions/pro-actions';
+import { runInputSimulation } from '../actions/input-simulation';
 
 const execFileAsync = promisify(execFile);
 
@@ -285,13 +286,13 @@ export async function executeActionNode(
             }
           : { status: 'failure', message: label, durationMs: Date.now() - start, error: r.error };
       }
-      case 'input_simulation':
-        return {
-          status: 'failure',
-          message: 'input_simulation',
-          durationMs: Date.now() - start,
-          error: 'Not implemented on this platform build (requires native module; see PLAN §15.1)',
-        };
+      case 'input_simulation': {
+        const label = String(config['label'] ?? 'Input simulation');
+        const r = await runInputSimulation(config);
+        return r.ok
+          ? { status: 'success', message: label, durationMs: Date.now() - start }
+          : { status: 'failure', message: label, durationMs: Date.now() - start, error: r.error };
+      }
       default:
         return { status: 'failure', message: node.kind, durationMs: Date.now() - start, error: 'Unknown action kind' };
     }

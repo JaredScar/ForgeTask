@@ -20,11 +20,13 @@ import { writeAuditLog } from './db/audit';
 import { defaultActionConfig, defaultConditionConfig, defaultTriggerConfig, stubTimeTriggerConfig } from './catalog-starters';
 import {
   assertProEnterprise,
+  decodeEntitlementPayload,
   EntitlementRequiredError,
   isProEnterpriseUnlocked,
   PRO_ACTION_KINDS,
   PRO_ENTITLEMENT_SETTINGS_KEY,
   PRO_TRIGGER_KINDS,
+  readStoredEntitlementKey,
   validateProEnterpriseKey,
   workflowNodesRequireProEntitlement,
 } from './entitlement';
@@ -32,6 +34,8 @@ import {
   clearOnlineEntitlementCache,
   getLicenseApiUrl,
   getLicenseMode,
+  LICENSE_LAST_VERIFIED_AT_KEY,
+  LICENSE_VALID_UNTIL_KEY,
   refreshLicenseOnline,
 } from './license-remote';
 import * as si from 'systeminformation';
@@ -48,6 +52,22 @@ function parseScopesJsonSafe(raw: string): string[] {
   }
 }
 
+/** Default graph: each node connects to the next in list order (matches Builder list UI). */
+function linearEdgesFromNodes(nodes: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const a = nodes[i]?.['id'];
+    const b = nodes[i + 1]?.['id'];
+    if (a == null || b == null) continue;
+    out.push({
+      id: randomUUID(),
+      source_node_id: String(a),
+      target_node_id: String(b),
+    });
+  }
+  return out;
+}
+
 export function registerIpcHandlers(
   db: Database.Database,
   engine: AutomationEngine,
@@ -57,10 +77,17 @@ export function registerIpcHandlers(
   ipcHandle('entitlement:getStatus', () => {
     const url = getLicenseApiUrl();
     const mode = getLicenseMode();
+    const key = readStoredEntitlementKey(db);
+    const decoded = decodeEntitlementPayload(key);
+    const validRow = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(LICENSE_VALID_UNTIL_KEY) as { value: string } | undefined;
+    const lastRow = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(LICENSE_LAST_VERIFIED_AT_KEY) as { value: string } | undefined;
     return {
       unlocked: isProEnterpriseUnlocked(db),
       licenseServerConfigured: Boolean(url),
       licenseMode: mode,
+      seats: decoded?.seats,
+      licenseValidUntil: validRow?.value ?? null,
+      licenseLastVerifiedAt: lastRow?.value ?? null,
     };
   });
 
@@ -117,6 +144,7 @@ export function registerIpcHandlers(
     }
 
     writeAuditLog(db, 'entitlement.saved', url && mode === 'hybrid' ? 'hybrid_ok' : 'local_hmac');
+    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(LICENSE_LAST_VERIFIED_AT_KEY, new Date().toISOString());
     return { ok: true as const, unlocked: true as const };
   });
 
@@ -135,10 +163,14 @@ export function registerIpcHandlers(
   ipcHandle('workflows:create', (_e, payload: { name: string; description?: string }) => {
     const id = randomUUID();
     const now = new Date().toISOString();
+    const pr = (
+      db.prepare(`SELECT value FROM settings WHERE key = 'default_workflow_priority'`).get() as { value: string } | undefined
+    )?.value?.toLowerCase();
+    const priority = pr === 'high' || pr === 'low' ? pr : 'normal';
     db.prepare(
       `INSERT INTO workflows (id, name, description, enabled, priority, tags, draft, run_count, created_at, updated_at)
-       VALUES (?, ?, ?, 1, 'normal', '[]', 1, 0, ?, ?)`
-    ).run(id, payload.name, payload.description ?? '', now, now);
+       VALUES (?, ?, ?, 1, ?, '[]', 1, 0, ?, ?)`
+    ).run(id, payload.name, payload.description ?? '', priority, now, now);
     writeAuditLog(db, 'workflow.create', `${payload.name} (${id})`);
     triggers.reloadFromDatabase();
     return id;
@@ -196,12 +228,13 @@ export function registerIpcHandlers(
             Number(n['sort_order'] ?? 0)
           );
         }
-      }
-      if (payload.edges) {
+        const edgeRows = Array.isArray(payload.edges)
+          ? (payload.edges as Array<Record<string, unknown>>)
+          : linearEdgesFromNodes(payload.nodes as Array<Record<string, unknown>>);
         const insE = db.prepare(
           `INSERT INTO workflow_edges (id, workflow_id, source_node_id, target_node_id) VALUES (?, ?, ?, ?)`
         );
-        for (const e of payload.edges as Array<Record<string, unknown>>) {
+        for (const e of edgeRows) {
           insE.run(String(e['id'] ?? randomUUID()), payload.id, String(e['source_node_id']), String(e['target_node_id']));
         }
       }
@@ -711,8 +744,18 @@ export function registerIpcHandlers(
   ipcHandle('settings:resetPreferences', () => {
     const defaults: [string, string][] = [
       ['log_retention_days', '30'],
+      ['log_retention_forever', '0'],
+      ['clear_logs_on_startup', '0'],
       ['engine_auto_start', '1'],
       ['notify_desktop', '1'],
+      ['toast_position', 'bottom'],
+      ['sound_on_workflow_failure', '0'],
+      ['replay_missed_cron', '0'],
+      ['default_workflow_priority', 'normal'],
+      ['ui_locale', 'en'],
+      ['ui_theme', 'dark'],
+      ['ui_accent', 'green'],
+      ['builder_show_json_default', '0'],
       ['max_concurrent_workflows', '5'],
       ['confirm_delete_workflow', '1'],
     ];

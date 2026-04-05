@@ -83,7 +83,14 @@ export interface TaskForgeBridge {
     getStatus: () => Promise<{ running: boolean }>;
   };
   entitlement: {
-    getStatus: () => Promise<{ unlocked: boolean; licenseServerConfigured?: boolean; licenseMode?: string }>;
+    getStatus: () => Promise<{
+      unlocked: boolean;
+      licenseServerConfigured?: boolean;
+      licenseMode?: string;
+      seats?: number;
+      licenseValidUntil?: string | null;
+      licenseLastVerifiedAt?: string | null;
+    }>;
     setKey: (key: string) => Promise<{ ok: boolean; unlocked: boolean; error?: 'invalid_key' | 'network' }>;
     refreshOnline: () => Promise<{ ok: boolean; unlocked: boolean; error?: string }>;
   };
