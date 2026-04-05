@@ -1,6 +1,8 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { IpcService } from '../../core/services/ipc.service';
+import { ToastService } from '../../core/services/toast.service';
+import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
 
 interface AuditRow {
   id: string;
@@ -14,7 +16,7 @@ interface AuditRow {
 
 @Component({
   selector: 'app-audit-logs-page',
-  imports: [FormsModule],
+  imports: [FormsModule, EmptyStateComponent],
   template: `
     <div>
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -43,13 +45,46 @@ interface AuditRow {
         />
         <input
           type="search"
+          [(ngModel)]="filterStatus"
+          (ngModelChange)="applyFilters()"
+          placeholder="Status…"
+          class="h-9 min-w-[6rem] w-28 rounded-lg border border-tf-border bg-tf-card px-3 text-sm outline-none focus:ring-1 focus:ring-tf-green"
+        />
+        <label class="flex min-w-[8.5rem] flex-1 items-center gap-2 text-xs text-tf-muted">
+          From
+          <input
+            type="date"
+            [(ngModel)]="filterFrom"
+            (ngModelChange)="applyFilters()"
+            class="h-9 min-w-0 flex-1 rounded-lg border border-tf-border bg-tf-card px-2 text-sm text-neutral-200"
+          />
+        </label>
+        <label class="flex min-w-[8.5rem] flex-1 items-center gap-2 text-xs text-tf-muted">
+          To
+          <input
+            type="date"
+            [(ngModel)]="filterTo"
+            (ngModelChange)="applyFilters()"
+            class="h-9 min-w-0 flex-1 rounded-lg border border-tf-border bg-tf-card px-2 text-sm text-neutral-200"
+          />
+        </label>
+        <input
+          type="search"
           [(ngModel)]="filterQ"
           (ngModelChange)="applyFilters()"
           placeholder="Search resource / action / user…"
           class="h-9 min-w-[10rem] flex-[2] rounded-lg border border-tf-border bg-tf-card px-3 text-sm outline-none focus:ring-1 focus:ring-tf-green"
         />
       </div>
-      <div class="mt-4 overflow-hidden rounded-xl border border-tf-border">
+      @if (rows().length === 0) {
+        <app-empty-state
+          class="mt-6 block"
+          icon="📋"
+          title="No audit entries"
+          description="Events from the app and API appear here. Adjust filters or clear date range to see more rows."
+        />
+      }
+      <div class="mt-4 overflow-hidden rounded-xl border border-tf-border" [class.hidden]="rows().length === 0">
         <table class="w-full text-left text-sm">
           <thead class="border-b border-tf-border bg-tf-card text-xs text-tf-muted">
             <tr>
@@ -84,9 +119,13 @@ interface AuditRow {
 })
 export class AuditLogsPageComponent implements OnInit {
   private readonly ipc = inject(IpcService);
+  private readonly toast = inject(ToastService);
   protected readonly rows = signal<AuditRow[]>([]);
   protected filterAction = '';
   protected filterUser = '';
+  protected filterStatus = '';
+  protected filterFrom = '';
+  protected filterTo = '';
   protected filterQ = '';
 
   async ngOnInit(): Promise<void> {
@@ -101,6 +140,9 @@ export class AuditLogsPageComponent implements OnInit {
     const list = (await this.ipc.api.audit.list({
       action: this.filterAction.trim() || undefined,
       userId: this.filterUser.trim() || undefined,
+      status: this.filterStatus.trim() || undefined,
+      from: this.filterFrom.trim() || undefined,
+      to: this.filterTo.trim() || undefined,
       q: this.filterQ.trim() || undefined,
     })) as Record<string, unknown>[];
     this.rows.set(
@@ -121,7 +163,12 @@ export class AuditLogsPageComponent implements OnInit {
   }
 
   async exportCsv(): Promise<void> {
-    const path = await this.ipc.api.audit.export();
-    if (path) alert('Exported to ' + path);
+    try {
+      const path = await this.ipc.api.audit.export();
+      if (path) this.toast.success(`Exported to ${path}`);
+      else this.toast.info('Export cancelled');
+    } catch {
+      this.toast.error('Could not export audit log');
+    }
   }
 }

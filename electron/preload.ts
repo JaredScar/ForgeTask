@@ -80,6 +80,7 @@ contextBridge.exposeInMainWorld('taskForge', {
   settings: {
     get: (key: string) => inv('settings:get', key),
     set: (key: string, value: string) => inv('settings:set', { key, value }),
+    resetPreferences: () => inv<boolean>('settings:resetPreferences'),
   },
   team: {
     list: () => inv('team:list'),
@@ -87,7 +88,8 @@ contextBridge.exposeInMainWorld('taskForge', {
     remove: (id: string) => inv<boolean>('team:remove', id),
   },
   audit: {
-    list: (opts?: { action?: string; userId?: string; q?: string }) => inv('audit:list', opts),
+    list: (opts?: { action?: string; userId?: string; q?: string; from?: string; to?: string; status?: string }) =>
+      inv('audit:list', opts),
     export: () => inv('audit:export'),
   },
   api: {
@@ -119,6 +121,7 @@ contextBridge.exposeInMainWorld('taskForge', {
       inv<{ ok: true; workflows: number; variables: number; settingsApplied: number } | { ok: false; error: string }>(
         'data:importZip'
       ),
+    clearUserData: () => inv<boolean>('data:clearUserData'),
   },
   dialog: {
     pickExecutable: () => inv<string | null>('dialog:pickExecutable'),

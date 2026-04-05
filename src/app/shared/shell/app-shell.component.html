@@ -106,6 +106,10 @@
   </div>
 </header>
 
+@if (loading.globalBusy()) {
+  <div class="h-0.5 w-full shrink-0 animate-pulse bg-tf-green/80" role="status" aria-label="Loading"></div>
+}
+
 <div class="flex min-h-0 flex-1">
   <aside class="flex w-56 shrink-0 flex-col border-r border-tf-border bg-tf-surface py-4 min-h-0">
     <div class="flex min-h-0 flex-1 flex-col">

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { NgClass, TitleCasePipe } from '@angular/common';
 import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
+import { LoadingService } from '../../core/services/loading.service';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
 import { toastAfterManualWorkflowRun } from '../../core/utils/workflow-run-feedback';
@@ -222,6 +223,7 @@ export class WorkflowsPageComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
   private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly loading = inject(LoadingService);
 
   protected readonly list = signal<WorkflowDto[]>([]);
   protected readonly searchQuery = signal('');
@@ -288,10 +290,12 @@ export class WorkflowsPageComponent implements OnInit {
   }
 
   async reload(): Promise<void> {
-    this.list.set(await this.ipc.api.workflows.list());
-    const valid = new Set(this.list().map((w) => w.id));
-    const sel = new Set([...this.selectedIds()].filter((id) => valid.has(id)));
-    this.selectedIds.set(sel);
+    await this.loading.run(async () => {
+      this.list.set(await this.ipc.api.workflows.list());
+      const valid = new Set(this.list().map((w) => w.id));
+      const sel = new Set([...this.selectedIds()].filter((id) => valid.has(id)));
+      this.selectedIds.set(sel);
+    });
   }
 
   protected toggleSelect(id: string, ev: Event): void {

@@ -3,6 +3,7 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 import { NgClass } from '@angular/common';
 import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
+import { LoadingService } from '../../core/services/loading.service';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
 import { HotkeysService } from '../../core/services/hotkeys.service';
 import type { ToastLevel } from '../../core/services/toast.service';
@@ -21,6 +22,7 @@ export class AppShellComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   protected readonly toast = inject(ToastService);
   protected readonly confirmDialog = inject(ConfirmDialogService);
+  protected readonly loading = inject(LoadingService);
   private readonly hotkeys = inject(HotkeysService);
 
   protected readonly wfCount = signal(0);

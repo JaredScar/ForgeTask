@@ -87,14 +87,25 @@ export interface TaskForgeBridge {
     setKey: (key: string) => Promise<{ ok: boolean; unlocked: boolean; error?: 'invalid_key' | 'network' }>;
     refreshOnline: () => Promise<{ ok: boolean; unlocked: boolean; error?: string }>;
   };
-  settings: { get: (key: string) => Promise<string | null>; set: (key: string, value: string) => Promise<boolean> };
+  settings: {
+    get: (key: string) => Promise<string | null>;
+    set: (key: string, value: string) => Promise<boolean>;
+    resetPreferences: () => Promise<boolean>;
+  };
   team: {
     list: () => Promise<unknown[]>;
     invite: (payload: { email: string; display_name: string; role: string }) => Promise<string>;
     remove: (id: string) => Promise<boolean>;
   };
   audit: {
-    list: (opts?: { action?: string; userId?: string; q?: string }) => Promise<unknown[]>;
+    list: (opts?: {
+      action?: string;
+      userId?: string;
+      q?: string;
+      from?: string;
+      to?: string;
+      status?: string;
+    }) => Promise<unknown[]>;
     export: () => Promise<string | null>;
   };
   api: {
@@ -114,10 +125,14 @@ export interface TaskForgeBridge {
     parse: (payload: string | { prompt: string; messages?: Array<{ role: string; content: string }> }) => Promise<{
       name: string;
       nodes: Array<Record<string, unknown>>;
+      source?: 'heuristic' | 'model';
+      confidence?: number;
     }>;
     parseStream: (payload: { prompt: string; messages?: Array<{ role: string; content: string }> }) => Promise<{
       name: string;
       nodes: Array<Record<string, unknown>>;
+      source?: 'heuristic' | 'model';
+      confidence?: number;
     }>;
     onStreamToken: (cb: (chunk: string) => void) => () => void;
   };
@@ -127,6 +142,7 @@ export interface TaskForgeBridge {
       | { ok: true; workflows: number; variables: number; settingsApplied: number }
       | { ok: false; error: string }
     >;
+    clearUserData: () => Promise<boolean>;
   };
   dialog: {
     /** Native open-file dialog; returns absolute path or `null` if cancelled. */

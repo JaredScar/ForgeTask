@@ -28,7 +28,13 @@ export type AnalyticsSummaryDto = {
   };
 };
 
-export type AiDraftResult = { name: string; nodes: Array<Record<string, unknown>> };
+export type AiDraftResult = {
+  name: string;
+  nodes: Array<Record<string, unknown>>;
+  /** Present when the draft came from the local keyword parser (§10.4). */
+  source?: 'heuristic' | 'model';
+  confidence?: number;
+};
 
 /** Maps `ipcMain.handle` channel name → request args (after `event`) and response type. */
 export interface IpcInvokeMap {
@@ -73,10 +79,15 @@ export interface IpcInvokeMap {
   'engine:getStatus': { req: []; res: { running: boolean } };
   'settings:get': { req: [key: string]; res: string | null };
   'settings:set': { req: [payload: { key: string; value: string }]; res: boolean };
+  'settings:resetPreferences': { req: []; res: boolean };
+  'data:clearUserData': { req: []; res: boolean };
   'team:list': { req: []; res: unknown[] };
   'team:invite': { req: [payload: { email: string; display_name: string; role: string }]; res: string };
   'team:remove': { req: [id: string]; res: boolean };
-  'audit:list': { req: [opts?: { action?: string; userId?: string; q?: string }]; res: unknown[] };
+  'audit:list': {
+    req: [opts?: { action?: string; userId?: string; q?: string; from?: string; to?: string; status?: string }];
+    res: unknown[];
+  };
   'audit:export': { req: []; res: string | null };
   'api:getKey': { req: []; res: string };
   'api:regenerateKey': { req: []; res: string };

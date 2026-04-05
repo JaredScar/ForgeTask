@@ -37,6 +37,7 @@ import {
 import * as si from 'systeminformation';
 import { isLocalDevOpenAiPlaceholder } from './dev-placeholders';
 import { importDataFromZipBuffer } from './data-import';
+import { heuristicWorkflowFromPrompt } from './ai-heuristic';
 
 function parseScopesJsonSafe(raw: string): string[] {
   try {
@@ -76,7 +77,7 @@ export function registerIpcHandlers(
     if (!trimmed) {
       db.prepare(`DELETE FROM settings WHERE key = ?`).run(PRO_ENTITLEMENT_SETTINGS_KEY);
       clearOnlineEntitlementCache(db);
-      writeAuditLog(db, 'settings.set', `${PRO_ENTITLEMENT_SETTINGS_KEY}.cleared`);
+      writeAuditLog(db, 'entitlement.cleared', 'organization_key');
       return { ok: true as const, unlocked: false as const };
     }
 
@@ -92,7 +93,7 @@ export function registerIpcHandlers(
           error: (remote.error === 'invalid' ? 'invalid_key' : 'network') as 'invalid_key' | 'network',
         };
       }
-      writeAuditLog(db, 'settings.set', PRO_ENTITLEMENT_SETTINGS_KEY);
+      writeAuditLog(db, 'entitlement.saved', 'online_strict');
       return { ok: true as const, unlocked: true as const };
     }
 
@@ -115,7 +116,7 @@ export function registerIpcHandlers(
       }
     }
 
-    writeAuditLog(db, 'settings.set', PRO_ENTITLEMENT_SETTINGS_KEY);
+    writeAuditLog(db, 'entitlement.saved', url && mode === 'hybrid' ? 'hybrid_ok' : 'local_hmac');
     return { ok: true as const, unlocked: true as const };
   });
 
@@ -707,6 +708,35 @@ export function registerIpcHandlers(
     return true;
   });
 
+  ipcHandle('settings:resetPreferences', () => {
+    const defaults: [string, string][] = [
+      ['log_retention_days', '30'],
+      ['engine_auto_start', '1'],
+      ['notify_desktop', '1'],
+      ['max_concurrent_workflows', '5'],
+      ['confirm_delete_workflow', '1'],
+    ];
+    for (const [k, v] of defaults) {
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(k, v);
+    }
+    writeAuditLog(db, 'settings.reset_defaults', 'automation_prefs');
+    return true;
+  });
+
+  ipcHandle('data:clearUserData', () => {
+    const tx = db.transaction(() => {
+      db.prepare(`DELETE FROM workflows`).run();
+      db.prepare(`DELETE FROM variables`).run();
+      db.prepare(`DELETE FROM team_members WHERE is_self = 0`).run();
+      db.prepare(`DELETE FROM audit_logs`).run();
+      db.prepare(`DELETE FROM api_keys`).run();
+      db.prepare(`DELETE FROM settings WHERE key IN ('api_key', 'marketplace_cache_json')`).run();
+    });
+    tx();
+    triggers.reloadFromDatabase();
+    return true;
+  });
+
   ipcHandle('team:list', () => {
     if (!isProEnterpriseUnlocked(db)) return [];
     return db.prepare(`SELECT * FROM team_members ORDER BY is_self DESC, display_name`).all();
@@ -734,26 +764,41 @@ export function registerIpcHandlers(
     return true;
   });
 
-  ipcHandle('audit:list', (_e, opts?: { action?: string; userId?: string; q?: string }) => {
-    if (!isProEnterpriseUnlocked(db)) return [];
-    let sql = `SELECT * FROM audit_logs WHERE 1=1`;
-    const args: unknown[] = [];
-    if (opts?.action?.trim()) {
-      sql += ` AND action LIKE ?`;
-      args.push(`%${opts.action.trim()}%`);
+  ipcHandle(
+    'audit:list',
+    (_e, opts?: { action?: string; userId?: string; q?: string; from?: string; to?: string; status?: string }) => {
+      if (!isProEnterpriseUnlocked(db)) return [];
+      let sql = `SELECT * FROM audit_logs WHERE 1=1`;
+      const args: unknown[] = [];
+      if (opts?.action?.trim()) {
+        sql += ` AND action LIKE ?`;
+        args.push(`%${opts.action.trim()}%`);
+      }
+      if (opts?.userId?.trim()) {
+        sql += ` AND user_id LIKE ?`;
+        args.push(`%${opts.userId.trim()}%`);
+      }
+      if (opts?.status?.trim()) {
+        sql += ` AND status LIKE ?`;
+        args.push(`%${opts.status.trim()}%`);
+      }
+      if (opts?.from?.trim()) {
+        sql += ` AND date(created_at) >= date(?)`;
+        args.push(opts.from.trim().slice(0, 10));
+      }
+      if (opts?.to?.trim()) {
+        sql += ` AND date(created_at) <= date(?)`;
+        args.push(opts.to.trim().slice(0, 10));
+      }
+      if (opts?.q?.trim()) {
+        sql += ` AND (resource LIKE ? OR action LIKE ? OR user_id LIKE ?)`;
+        const qq = `%${opts.q.trim()}%`;
+        args.push(qq, qq, qq);
+      }
+      sql += ` ORDER BY created_at DESC LIMIT 500`;
+      return db.prepare(sql).all(...args);
     }
-    if (opts?.userId?.trim()) {
-      sql += ` AND user_id LIKE ?`;
-      args.push(`%${opts.userId.trim()}%`);
-    }
-    if (opts?.q?.trim()) {
-      sql += ` AND (resource LIKE ? OR action LIKE ? OR user_id LIKE ?)`;
-      const qq = `%${opts.q.trim()}%`;
-      args.push(qq, qq, qq);
-    }
-    sql += ` ORDER BY created_at DESC LIMIT 500`;
-    return db.prepare(sql).all(...args);
-  });
+  );
 
   ipcHandle('audit:export', async () => {
     assertProEnterprise(db);
@@ -895,8 +940,8 @@ export function registerIpcHandlers(
         return heuristicWorkflowFromPrompt(prompt);
       }
       try {
-        const json = await completeWorkflowJson(apiKey, messages);
-        return json;
+        const json = (await completeWorkflowJson(apiKey, messages)) as Record<string, unknown>;
+        return { ...json, source: 'model' as const, confidence: 0.85 };
       } catch {
         return heuristicWorkflowFromPrompt(prompt);
       }
@@ -918,7 +963,8 @@ export function registerIpcHandlers(
     try {
       const full = await streamWorkflowCompletion(apiKey, messages, (c) => send(c));
       try {
-        return parseWorkflowFromModelText(full) as Record<string, unknown>;
+        const parsed = parseWorkflowFromModelText(full) as Record<string, unknown>;
+        return { ...parsed, source: 'model' as const, confidence: 0.85 };
       } catch {
         return heuristicWorkflowFromPrompt(prompt);
       }
@@ -1015,143 +1061,3 @@ export function registerIpcHandlers(
   });
 }
 
-function heuristicWorkflowFromPrompt(prompt: string): { name: string; nodes: Array<Record<string, unknown>> } {
-  if (prompt.trim().length < 6) {
-    return {
-      name: 'Need more detail',
-      nodes: [
-        {
-          node_type: 'trigger',
-          kind: 'time_schedule',
-          config: { cron: '0 9 * * *', label: 'Time: 9:00 AM' },
-          sort_order: 0,
-        },
-        {
-          node_type: 'action',
-          kind: 'show_notification',
-          config: {
-            title: 'TaskForge',
-            body: "I didn't understand that — try describing a trigger and an action separately.",
-            label: 'Show Notification',
-          },
-          sort_order: 1,
-        },
-      ],
-    };
-  }
-
-  const lower = prompt.toLowerCase();
-  const nodes: Array<Record<string, unknown>> = [];
-  let order = 0;
-
-  if (lower.includes('plug in') || lower.includes('usb') || lower.includes('headphone') || lower.includes('device')) {
-    nodes.push({
-      node_type: 'trigger',
-      kind: lower.includes('usb') || lower.includes('plug') ? 'device_trigger' : 'device_connected',
-      config: { label: 'Device', device: 'audio', event: 'connect' },
-      sort_order: order++,
-    });
-  } else if (lower.includes('idle')) {
-    nodes.push({
-      node_type: 'trigger',
-      kind: 'idle_trigger',
-      config: { idleSeconds: lower.includes('5 min') ? 300 : 600, label: 'When idle' },
-      sort_order: order++,
-    });
-  } else if (lower.includes('memory') || lower.includes('ram')) {
-    nodes.push({
-      node_type: 'trigger',
-      kind: 'memory_trigger',
-      config: { threshold: 85, comparison: 'above', label: 'Memory high' },
-      sort_order: order++,
-    });
-  } else if (lower.includes('midnight') || lower.includes('12 am') || lower.includes('12:00 am')) {
-    nodes.push({
-      node_type: 'trigger',
-      kind: 'time_schedule',
-      config: { cron: '0 0 * * *', label: 'Daily at midnight' },
-      sort_order: order++,
-    });
-  } else if (lower.includes('startup') || lower.includes('login') || lower.includes('boot')) {
-    nodes.push({
-      node_type: 'trigger',
-      kind: 'system_startup',
-      config: { label: 'On startup' },
-      sort_order: order++,
-    });
-  } else if (lower.includes('wifi') || lower.includes('network') || lower.includes('ssid')) {
-    nodes.push({
-      node_type: 'trigger',
-      kind: 'network_change',
-      config: { ssid: '', label: 'Network change' },
-      sort_order: order++,
-    });
-  } else if (lower.includes('file') && (lower.includes('change') || lower.includes('watch'))) {
-    nodes.push({
-      node_type: 'trigger',
-      kind: 'file_change',
-      config: { path: '', label: 'File change' },
-      sort_order: order++,
-    });
-  } else if (lower.includes('cpu')) {
-    nodes.push({
-      node_type: 'trigger',
-      kind: 'cpu_memory_usage',
-      config: { cpuPercent: 90, memPercent: 95, label: 'CPU high' },
-      sort_order: order++,
-    });
-  } else if (lower.includes('morning') || lower.includes('every day') || lower.includes('weekday')) {
-    nodes.push({
-      node_type: 'trigger',
-      kind: 'time_schedule',
-      config: { cron: lower.includes('weekday') ? '0 9 * * 1-5' : '0 9 * * *', label: 'Time: 9:00 AM' },
-      sort_order: order++,
-    });
-  } else {
-    nodes.push({
-      node_type: 'trigger',
-      kind: 'time_schedule',
-      config: { cron: '0 * * * *', label: 'Time: hourly' },
-      sort_order: order++,
-    });
-  }
-
-  if (lower.includes('chrome')) {
-    nodes.push({
-      node_type: 'action',
-      kind: 'open_application',
-      config: { path: 'chrome.exe', label: 'Open Chrome' },
-      sort_order: order++,
-    });
-  } else if (lower.includes('script') || lower.includes('powershell') || lower.includes('shell')) {
-    nodes.push({
-      node_type: 'action',
-      kind: 'run_script',
-      config: { path: '', shell: 'powershell', label: 'Run script' },
-      sort_order: order++,
-    });
-  } else if (lower.includes('http') || lower.includes('post ') || lower.includes('request')) {
-    nodes.push({
-      node_type: 'action',
-      kind: 'http_request',
-      config: { method: 'GET', url: 'https://example.com', label: 'HTTP request' },
-      sort_order: order++,
-    });
-  } else if (lower.includes('spotify') || lower.includes('app') || lower.includes('open ')) {
-    nodes.push({
-      node_type: 'action',
-      kind: 'open_application',
-      config: { path: lower.includes('spotify') ? 'spotify.exe' : 'notepad.exe', label: 'Open application' },
-      sort_order: order++,
-    });
-  } else {
-    nodes.push({
-      node_type: 'action',
-      kind: 'show_notification',
-      config: { title: 'TaskForge', body: prompt.slice(0, 120), label: 'Show Notification' },
-      sort_order: order++,
-    });
-  }
-
-  return { name: 'AI Draft: ' + prompt.slice(0, 40), nodes };
-}

@@ -2,7 +2,7 @@
 
 > **Source of truth for scope:** [PLAN.md](./PLAN.md) (full product plan, history, and acceptance notes).  
 > **This file:** a **backlog-only** view — items **not** fully done per §22 and follow-up notes. Update both when you ship features.  
-> **Last synced:** 2026-04-05
+> **Last synced:** 2026-04-05 (update this when you change backlog)
 
 ---
 
@@ -18,7 +18,7 @@
 
 | Item | PLAN § | Notes |
 |------|--------|--------|
-| Settings (remaining toggles / danger zone) | §14.1 | Core prefs + ZIP export/import ✅. Still open: language, default priority, log retention as select + forever, log clear on startup, sound / notification position, theme & accent, developer default JSON, reset defaults, clear all data, etc. |
+| Settings (remaining toggles) | §14.1 | Core prefs + ZIP + **reset preferences to defaults** + **danger-zone erase automation data** ✅. Still open: language, default priority, log retention preset/forever UI, log clear on startup, sound/position, theme/accent, developer default JSON, etc. |
 
 ---
 
@@ -49,7 +49,7 @@
 | Online validation — complete policy, UX, grace, revocation story | §20.9 |
 | Per-seat enforcement (`seats` in payload + Team UI) | §20.8, §22 Phase 4 |
 | `*appIsTier` / global license signal directive | §20.8 |
-| Audit log when org key saved / cleared | §20.8 |
+| Audit log when org key saved / cleared | §20.8 · ✅ `entitlement.saved` / `entitlement.cleared` |
 | Settings: “Connected to license service / last verified …” copy | §20.7 future note |
 
 ---
@@ -74,12 +74,12 @@
 
 | Area | PLAN § | Notes |
 |------|--------|--------|
-| AI heuristic parser breadth + confidence | §10.4 | Expand beyond limited keywords. |
-| Audit log filtering (action type, date range, resource type) | §13.2 | Basic search may exist in UI — enrich per plan. |
+| AI heuristic parser breadth + confidence | §10.4 | **Expanded keywords + confidence score + UI hint** ✅; further tuning always possible. |
+| Audit log filtering (action type, date range, resource type) | §13.2 | **Date range + status + existing filters + empty state + toast export** ✅. |
 | §13.1 narrative vs code | §13.1 | Plan text predates `writeAuditLog`; treat “missing IPC coverage” as **verify + extend** if any mutation lacks audit. |
 | App launch trigger efficiency | §16.1 | Reduce 5s polling where possible. |
-| Loading states across pages | §21.3 | `LoadingService` pattern. |
-| Empty states component on list pages | §21.4 | `EmptyStateComponent`. |
+| Loading states across pages | §21.3 | **`LoadingService` + shell bar** ✅ (wire `loading.run()` on more pages over time). |
+| Empty states component on list pages | §21.4 | **Already on workflows/logs/variables**; **audit + marketplace search/catalog** ✅. |
 | Logs UX | §6.1 | Optional: toast when new logs while scrolled down. |
 
 ---

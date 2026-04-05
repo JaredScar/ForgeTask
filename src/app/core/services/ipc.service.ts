@@ -332,6 +332,7 @@ export class IpcService {
           mockSettings[key] = value;
           return true;
         },
+        resetPreferences: async () => true,
       },
       team: {
         list: async () => [],
@@ -339,7 +340,14 @@ export class IpcService {
         remove: async () => true,
       },
       audit: {
-        list: async (_opts?: { action?: string; userId?: string; q?: string }) => [],
+        list: async (_opts?: {
+          action?: string;
+          userId?: string;
+          q?: string;
+          from?: string;
+          to?: string;
+          status?: string;
+        }) => [],
         export: async () => null,
       },
       dialog: {
@@ -370,6 +378,8 @@ export class IpcService {
           return {
             name: (prompt.trim().slice(0, 56) || 'Untitled draft').replace(/\s+$/, ''),
             nodes: [],
+            source: 'heuristic' as const,
+            confidence: 0.5,
           };
         },
         parseStream: async (payload) => {
@@ -377,6 +387,8 @@ export class IpcService {
           return {
             name: (prompt.trim().slice(0, 56) || 'Untitled draft').replace(/\s+$/, ''),
             nodes: [],
+            source: 'heuristic' as const,
+            confidence: 0.5,
           };
         },
         onStreamToken: () => () => undefined,
@@ -384,6 +396,7 @@ export class IpcService {
       data: {
         exportZip: async () => null,
         importZip: async () => ({ ok: false as const, error: 'Import is only available in the desktop app.' }),
+        clearUserData: async () => true,
       },
       app: {
         getPaths: async () => ({ userData: '' }),

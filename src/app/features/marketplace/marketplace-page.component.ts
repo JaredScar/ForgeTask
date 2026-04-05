@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
+import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
 
 type MarketplaceItem = {
   id: string;
@@ -16,7 +17,7 @@ type MarketplaceItem = {
 
 @Component({
   selector: 'app-marketplace-page',
-  imports: [FormsModule],
+  imports: [FormsModule, EmptyStateComponent],
   template: `
     <div>
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -32,7 +33,22 @@ type MarketplaceItem = {
           class="h-9 w-56 rounded-lg border border-tf-border bg-tf-card px-3 text-sm"
         />
       </div>
-      <div class="mt-6 grid gap-4 md:grid-cols-2">
+      @if (items().length === 0) {
+        <app-empty-state
+          class="mt-8 block"
+          icon="📦"
+          title="No templates"
+          description="Could not load the template catalog. Check your connection or TASKFORGE_MARKETPLACE_URL."
+        />
+      } @else if (filtered().length === 0) {
+        <app-empty-state
+          class="mt-8 block"
+          icon="🔍"
+          title="No matching templates"
+          description="Try a different search term or clear the filter."
+        />
+      }
+      <div class="mt-6 grid gap-4 md:grid-cols-2" [class.hidden]="items().length === 0 || filtered().length === 0">
         @for (item of filtered(); track item.id) {
           <div class="rounded-xl border border-tf-border bg-tf-card p-5">
             <div class="flex items-start justify-between gap-2">

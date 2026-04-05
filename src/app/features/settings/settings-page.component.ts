@@ -156,6 +156,37 @@ import { ConfirmDialogService } from '../../core/services/confirm-dialog.service
           </button>
         </div>
       </div>
+
+      <div class="rounded-xl border border-tf-border bg-tf-card p-4">
+        <h2 class="text-sm font-medium">Maintenance</h2>
+        <p class="mt-1 text-xs text-tf-muted">
+          Reset automation-related preferences (retention, engine auto-start, notifications, concurrency, confirm delete) to defaults.
+          Does not remove your license, OpenAI key, or workflows.
+        </p>
+        <button
+          type="button"
+          (click)="resetPreferences()"
+          class="mt-3 rounded-lg border border-tf-border px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+        >
+          Reset preferences to defaults
+        </button>
+      </div>
+
+      <div class="rounded-xl border border-red-500/35 bg-red-500/5 p-4">
+        <h2 class="text-sm font-medium text-red-200">Danger zone</h2>
+        <p class="mt-1 text-xs text-tf-muted">
+          Permanently delete <strong class="text-neutral-300">all workflows</strong> (and their run history),
+          <strong class="text-neutral-300">all variables</strong>, audit log entries, non–self team members, and stored API keys.
+          Your organization license and OpenAI API key fields in Settings are kept (values not wiped).
+        </p>
+        <button
+          type="button"
+          (click)="clearAllUserData()"
+          class="mt-3 rounded-lg border border-red-500/50 bg-red-500/15 px-4 py-2 text-sm text-red-100 hover:bg-red-500/25"
+        >
+          Erase all automation data…
+        </button>
+      </div>
     </div>
   `,
 })
@@ -290,6 +321,45 @@ export class SettingsPageComponent implements OnInit {
       await this.loadSettingsForm();
     } catch {
       this.toast.error('Could not import data');
+    }
+  }
+
+  async resetPreferences(): Promise<void> {
+    const ok = await this.confirm.confirm({
+      title: 'Reset preferences?',
+      message: 'Automation and log preferences will return to defaults. Your workflows and secrets are not affected.',
+      confirmLabel: 'Reset',
+    });
+    if (!ok) return;
+    try {
+      await this.ipc.api.settings.resetPreferences();
+      await this.loadSettingsForm();
+      this.toast.success('Preferences reset to defaults');
+    } catch {
+      this.toast.error('Could not reset preferences');
+    }
+  }
+
+  async clearAllUserData(): Promise<void> {
+    const ok = await this.confirm.confirm({
+      title: 'Erase all automation data?',
+      message:
+        'This removes every workflow, variable, execution history, audit log, invited team members, and API keys. License and OpenAI key entries stay in Settings (not cleared). This cannot be undone.',
+      confirmLabel: 'Erase',
+    });
+    if (!ok) return;
+    const ok2 = await this.confirm.confirm({
+      title: 'Confirm permanent erase',
+      message: 'Type nothing else — just confirm you want to delete all automation data on this device.',
+      confirmLabel: 'Yes, delete everything',
+    });
+    if (!ok2) return;
+    try {
+      await this.ipc.api.data.clearUserData();
+      this.toast.success('Automation data erased');
+      await this.loadSettingsForm();
+    } catch {
+      this.toast.error('Could not erase data');
     }
   }
 }
