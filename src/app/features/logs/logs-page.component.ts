@@ -26,6 +26,31 @@ interface LogRow {
   steps?: LogStepRow[];
 }
 
+/** PLAN §6.2 — live step stream from `logs:stepProgress`. */
+interface LiveStepLine {
+  stepIndex: number;
+  stepType: string;
+  stepKind: string;
+  status: string;
+  message: string | null;
+  error: string | null;
+}
+
+interface LiveSession {
+  logId: string;
+  workflowId: string;
+  workflowName: string;
+  steps: LiveStepLine[];
+  phase: 'running' | 'finished';
+  finalStatus?: string;
+}
+
+function upsertLiveStep(steps: LiveStepLine[], line: LiveStepLine): LiveStepLine[] {
+  const map = new Map(steps.map((s) => [s.stepIndex, s]));
+  map.set(line.stepIndex, line);
+  return Array.from(map.values()).sort((a, b) => a.stepIndex - b.stepIndex);
+}
+
 @Component({
   selector: 'app-logs-page',
   imports: [FormsModule, EmptyStateComponent],
@@ -72,6 +97,106 @@ interface LogRow {
           </button>
         </div>
       </div>
+      @if (liveSessions().length > 0) {
+        <div
+          class="mt-4 rounded-xl border border-tf-green/40 bg-tf-card/80 p-4 shadow-[0_0_24px_-8px_rgba(34,197,94,0.25)]"
+          role="region"
+          aria-label="Live workflow runs"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <h2 class="text-sm font-semibold text-neutral-100">Live run</h2>
+              @if (hasRunningLiveSession()) {
+                <span class="relative flex h-2 w-2">
+                  <span
+                    class="absolute inline-flex h-full w-full animate-ping rounded-full bg-tf-green opacity-60"
+                  ></span>
+                  <span class="relative inline-flex h-2 w-2 rounded-full bg-tf-green"></span>
+                </span>
+              }
+            </div>
+            @if (hasFinishedLiveSession()) {
+              <button
+                type="button"
+                class="text-xs text-tf-muted hover:text-white"
+                (click)="dismissFinishedLiveSessions()"
+              >
+                Clear finished
+              </button>
+            }
+          </div>
+          <div class="mt-3 space-y-4">
+            @for (s of liveSessions(); track s.logId) {
+              <div class="rounded-lg border border-tf-border/80 bg-tf-bg/40 p-3">
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p class="text-sm font-medium text-neutral-200">{{ s.workflowName }}</p>
+                    <p class="font-mono text-[10px] text-tf-muted">{{ s.logId.slice(0, 8) }}…</p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    @if (s.phase === 'finished' && s.finalStatus) {
+                      @switch (s.finalStatus) {
+                        @case ('success') {
+                          <span
+                            class="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-emerald-200"
+                          >
+                            {{ s.finalStatus }}
+                          </span>
+                        }
+                        @case ('failure') {
+                          <span
+                            class="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-red-200"
+                          >
+                            {{ s.finalStatus }}
+                          </span>
+                        }
+                        @default {
+                          <span
+                            class="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-amber-100"
+                          >
+                            {{ s.finalStatus }}
+                          </span>
+                        }
+                      }
+                    }
+                    @if (s.phase === 'running') {
+                      <span class="text-[10px] font-medium uppercase text-tf-green">Running</span>
+                    }
+                    <button
+                      type="button"
+                      class="text-xs text-tf-muted hover:text-white"
+                      (click)="dismissLiveSession(s.logId)"
+                      aria-label="Dismiss this live run panel"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+                @if (s.phase === 'running' && s.steps.length === 0) {
+                  <p class="mt-2 text-xs text-tf-muted">Waiting for steps…</p>
+                }
+                @if (s.steps.length > 0) {
+                  <ul class="mt-2 space-y-1.5 border-t border-tf-border/50 pt-2 font-mono text-[11px] text-neutral-400">
+                    @for (st of s.steps; track st.stepIndex) {
+                      <li class="flex flex-wrap gap-x-2">
+                        <span class="text-tf-muted">{{ st.stepType }}</span>
+                        <span class="text-tf-green">{{ st.stepKind }}</span>
+                        <span>{{ st.status }}</span>
+                        @if (st.message) {
+                          <span class="text-neutral-300">— {{ st.message }}</span>
+                        }
+                        @if (st.error) {
+                          <span class="text-red-400">— {{ st.error }}</span>
+                        }
+                      </li>
+                    }
+                  </ul>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
       @if (rows().length === 0) {
         <app-empty-state
           icon="📜"
@@ -149,6 +274,7 @@ export class LogsPageComponent implements OnInit, OnDestroy {
   private disposeLogs: (() => void) | undefined;
   private disposeStep: (() => void) | undefined;
   protected readonly rows = signal<LogRow[]>([]);
+  protected readonly liveSessions = signal<LiveSession[]>([]);
   protected readonly filter = signal('');
   protected readonly statusFilter = signal('all');
   protected readonly expanded = signal(new Set<string>());
@@ -163,16 +289,61 @@ export class LogsPageComponent implements OnInit, OnDestroy {
     this.disposeStep = this.ipc.api.logs.onStepProgress((step) => {
       const logId = String(step['logId'] ?? '');
       if (!logId) return;
-      const line: LogStepRow = {
-        step_kind: String(step['stepKind'] ?? ''),
+      const workflowId = String(step['workflowId'] ?? '');
+      const stepIndex = Number(step['stepIndex'] ?? 0);
+      const liveLine: LiveStepLine = {
+        stepIndex,
+        stepType: String(step['stepType'] ?? ''),
+        stepKind: String(step['stepKind'] ?? ''),
         status: String(step['status'] ?? ''),
         message: (step['message'] as string) ?? null,
         error: (step['error'] as string) ?? null,
+      };
+      const row = this.rows().find((r) => r.id === logId);
+      const wfName = row?.workflow_name ?? 'Workflow';
+      this.liveSessions.update((sessions) => {
+        const i = sessions.findIndex((s) => s.logId === logId);
+        if (i < 0) {
+          return [...sessions, { logId, workflowId, workflowName: wfName, steps: [liveLine], phase: 'running' }];
+        }
+        const s = sessions[i]!;
+        return sessions.map((sess, j) =>
+          j === i
+            ? {
+                ...sess,
+                workflowName: wfName || sess.workflowName,
+                steps: upsertLiveStep(sess.steps, liveLine),
+                phase: 'running',
+              }
+            : sess
+        );
+      });
+      const line: LogStepRow = {
+        step_kind: liveLine.stepKind,
+        status: liveLine.status,
+        message: liveLine.message,
+        error: liveLine.error,
       };
       this.rows.update((list) =>
         list.map((r) => (r.id === logId ? { ...r, steps: [...(r.steps ?? []), line] } : r))
       );
     });
+  }
+
+  protected hasRunningLiveSession(): boolean {
+    return this.liveSessions().some((s) => s.phase === 'running');
+  }
+
+  protected hasFinishedLiveSession(): boolean {
+    return this.liveSessions().some((s) => s.phase === 'finished');
+  }
+
+  protected dismissLiveSession(logId: string): void {
+    this.liveSessions.update((sessions) => sessions.filter((s) => s.logId !== logId));
+  }
+
+  protected dismissFinishedLiveSessions(): void {
+    this.liveSessions.update((sessions) => sessions.filter((s) => s.phase !== 'finished'));
   }
 
   ngOnDestroy(): void {
@@ -229,6 +400,50 @@ export class LogsPageComponent implements OnInit, OnDestroy {
       workflow_name: wfMap.get(String(l['workflow_id'])) ?? String(l['workflow_id']),
     }));
     this.rows.set(mapped);
+    this.hydrateLiveSessionsAfterReload();
+  }
+
+  /** Sync live panel with DB rows (running vs finished) and pick up runs we have not seen steps for yet. */
+  private hydrateLiveSessionsAfterReload(): void {
+    const list = this.rows();
+    this.liveSessions.update((sessions) => {
+      const mapped: LiveSession[] = [];
+      for (const s of sessions) {
+        const row = list.find((r) => r.id === s.logId);
+        if (!row) continue;
+        const phase: 'running' | 'finished' = row.status === 'running' ? 'running' : 'finished';
+        const upd: LiveSession = {
+          ...s,
+          workflowName: row.workflow_name,
+          phase,
+        };
+        if (phase === 'finished') {
+          upd.finalStatus = row.status;
+        } else {
+          delete upd.finalStatus;
+        }
+        mapped.push(upd);
+      }
+
+      let next: LiveSession[] = [...mapped];
+      for (const row of list) {
+        if (row.status !== 'running') continue;
+        if (next.some((s) => s.logId === row.id)) continue;
+        next.push({
+          logId: row.id,
+          workflowId: row.workflow_id,
+          workflowName: row.workflow_name,
+          steps: [],
+          phase: 'running',
+        });
+      }
+
+      const maxFinished = 5;
+      const running = next.filter((s) => s.phase === 'running');
+      const finished = next.filter((s) => s.phase === 'finished');
+      const tail = finished.slice(-maxFinished);
+      return [...running, ...tail];
+    });
   }
 
   protected statusIcon(s: string): string {

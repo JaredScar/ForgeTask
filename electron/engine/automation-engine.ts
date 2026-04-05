@@ -103,6 +103,9 @@ export class AutomationEngine {
       )
       .run(logId, workflowId, started, triggerKind ?? 'manual');
 
+    /* So the renderer can show the running row and live step panel before the run finishes. */
+    this.notifyRenderer?.({ logId, workflowId });
+
     const nodes = this.db
       .prepare(
         `SELECT id, workflow_id, node_type, kind, config, position_x, position_y, sort_order FROM workflow_nodes WHERE workflow_id = ? ORDER BY sort_order ASC`
