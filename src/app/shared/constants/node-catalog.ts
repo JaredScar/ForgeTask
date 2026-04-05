@@ -14,6 +14,8 @@ export interface NodeCatalogEntry {
 export const NODE_CATALOG: readonly NodeCatalogEntry[] = [
   { kind: 'time_schedule', nodeType: 'trigger', label: 'Time schedule', description: 'Run on a cron schedule', icon: '🕐', tier: 'free', category: 'Time' },
   { kind: 'system_startup', nodeType: 'trigger', label: 'System startup', description: 'When you sign in to Windows', icon: '🚀', tier: 'free', category: 'Time' },
+  { kind: 'interval_trigger', nodeType: 'trigger', label: 'Every N minutes', description: 'Simple repeating timer (no cron)', icon: '⏱', tier: 'free', category: 'Time' },
+  { kind: 'power_event', nodeType: 'trigger', label: 'Power & session', description: 'AC/battery, sleep, resume, lock screen', icon: '🔋', tier: 'free', category: 'System' },
   { kind: 'app_launch', nodeType: 'trigger', label: 'App launch', description: 'When a process appears', icon: '📲', tier: 'free', category: 'Apps' },
   { kind: 'network_change', nodeType: 'trigger', label: 'Wi‑Fi / network', description: 'When SSID or connectivity matches', icon: '📶', tier: 'pro', category: 'System' },
   { kind: 'file_change', nodeType: 'trigger', label: 'File or folder', description: 'When files change under a path', icon: '📁', tier: 'pro', category: 'System' },
@@ -36,6 +38,10 @@ export const NODE_CATALOG: readonly NodeCatalogEntry[] = [
   { kind: 'http_request', nodeType: 'action', label: 'HTTP request', description: 'Call a URL', icon: '🌐', tier: 'pro', category: 'Actions' },
   { kind: 'kill_process', nodeType: 'action', label: 'Kill process', description: 'End a process by name or PID', icon: '⛔', tier: 'free', category: 'Actions' },
   { kind: 'file_operation', nodeType: 'action', label: 'File operation', description: 'Copy, move, delete, mkdir', icon: '📋', tier: 'free', category: 'Actions' },
+  { kind: 'open_url', nodeType: 'action', label: 'Open URL', description: 'Open http(s) link in default browser', icon: '🔗', tier: 'free', category: 'Actions' },
+  { kind: 'clipboard_write', nodeType: 'action', label: 'Set clipboard', description: 'Copy text to the system clipboard', icon: '📌', tier: 'free', category: 'Actions' },
+  { kind: 'write_text_file', nodeType: 'action', label: 'Write text file', description: 'Create, overwrite, or append a text file', icon: '📝', tier: 'free', category: 'Actions' },
+  { kind: 'lock_workstation', nodeType: 'action', label: 'Lock screen', description: 'Lock Windows (Win+L equivalent)', icon: '🔒', tier: 'free', category: 'Actions' },
 ] as const;
 
 export function catalogEntry(kind: string): NodeCatalogEntry | undefined {

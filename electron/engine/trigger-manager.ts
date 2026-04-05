@@ -4,19 +4,34 @@ import chokidar from 'chokidar';
 import type { FSWatcher } from 'chokidar';
 import * as si from 'systeminformation';
 import { powerMonitor } from 'electron';
+
+type TriggerRow = { workflow_id: string; node_id: string; kind: string; config: string };
 import type { AutomationEngine } from './automation-engine';
 type Scheduled = schedule.Job;
 type Watcher = FSWatcher;
 
+function processMatchesConfig(processField: string, procName?: string): boolean {
+  if (!procName || !processField.trim()) return false;
+  const want = processField.trim().toLowerCase().replace(/\.exe$/i, '');
+  const name = procName.toLowerCase();
+  const base = name.replace(/\.exe$/i, '');
+  return name === want || base === want || name.includes(want) || base.includes(want);
+}
+
 export class TriggerManager {
   private readonly jobs = new Map<string, Scheduled>();
   private readonly watchers = new Map<string, Watcher>();
+  private readonly intervalTimers = new Map<string, ReturnType<typeof setInterval>>();
+  private readonly powerCleanups: Array<() => void> = [];
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private lastCpu = 0;
   private lastMem = 0;
   private lastUsbCount: number | null = null;
   private readonly lastIdleFire = new Map<string, number>();
   private readonly lastMemTriggerFire = new Map<string, number>();
+  private readonly lastPowerEventFire = new Map<string, number>();
+  /** Per workflow+node: was the target process running on last poll (app_launch edge detect). */
+  private readonly appLaunchWasRunning = new Map<string, boolean>();
   private engineReady = false;
 
   constructor(
@@ -52,7 +67,7 @@ export class TriggerManager {
          JOIN workflow_nodes n ON n.workflow_id = w.id
          WHERE w.enabled = 1 AND n.node_type = 'trigger'`
       )
-      .all() as { workflow_id: string; node_id: string; kind: string; config: string }[];
+      .all() as TriggerRow[];
 
     for (const r of rows) {
       let config: Record<string, unknown> = {};
@@ -75,6 +90,20 @@ export class TriggerManager {
         case 'system_startup':
           break;
         case 'app_launch':
+          this.ensurePollLoop();
+          break;
+        case 'interval_trigger': {
+          const mins = Math.max(1, Math.min(24 * 60, Number(config['intervalMinutes'] ?? 30)));
+          const ms = mins * 60 * 1000;
+          const ikey = `${r.workflow_id}:${r.node_id}`;
+          const timer = setInterval(() => {
+            void this.engine.runWorkflow(r.workflow_id, 'interval_trigger');
+            this.recordTriggerFire(r.workflow_id, r.node_id);
+          }, ms);
+          this.intervalTimers.set(ikey, timer);
+          break;
+        }
+        case 'power_event':
           break;
         case 'network_change':
           this.startNetworkPoll(r.workflow_id, String(config['ssid'] ?? ''));
@@ -100,7 +129,66 @@ export class TriggerManager {
           break;
       }
     }
+    this.attachPowerEventListeners(rows);
     this.engineReady = true;
+  }
+
+  /** Electron `powerMonitor` events (AC/battery, sleep, lock screen where supported). */
+  private attachPowerEventListeners(rows: TriggerRow[]): void {
+    for (const off of this.powerCleanups) {
+      try {
+        off();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.powerCleanups.length = 0;
+
+    const allowed = new Set([
+      'on-ac',
+      'on-battery',
+      'resume',
+      'suspend',
+      'lock-screen',
+      'unlock-screen',
+      'shutdown',
+    ]);
+
+    const buckets = new Map<string, { workflow_id: string; node_id: string }[]>();
+    for (const r of rows) {
+      if (r.kind !== 'power_event') continue;
+      let c: Record<string, unknown> = {};
+      try {
+        c = JSON.parse(r.config) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const ev = String(c['event'] ?? 'resume').trim();
+      if (!allowed.has(ev)) continue;
+      const list = buckets.get(ev) ?? [];
+      list.push({ workflow_id: r.workflow_id, node_id: r.node_id });
+      buckets.set(ev, list);
+    }
+
+    for (const [ev, targets] of buckets) {
+      if (targets.length === 0) continue;
+      const handler = (): void => {
+        const now = Date.now();
+        for (const t of targets) {
+          const dedupeKey = `${t.workflow_id}:${t.node_id}:${ev}`;
+          const last = this.lastPowerEventFire.get(dedupeKey) ?? 0;
+          if (now - last < 3_000) continue;
+          this.lastPowerEventFire.set(dedupeKey, now);
+          void this.engine.runWorkflow(t.workflow_id, 'power_event');
+          this.recordTriggerFire(t.workflow_id, t.node_id);
+        }
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Electron event names vary by OS
+      powerMonitor.on(ev as any, handler);
+      this.powerCleanups.push(() => {
+        powerMonitor.off(ev as any, handler);
+      });
+    }
   }
 
   private recordTriggerFire(workflowId: string, triggerNodeId: string): void {
@@ -120,6 +208,41 @@ export class TriggerManager {
 
   private async pollResources(): Promise<void> {
     try {
+      let procList: { name: string }[] = [];
+      try {
+        const procs = await si.processes();
+        procList = procs.list ?? [];
+      } catch {
+        procList = [];
+      }
+
+      const launchRows = this.db
+        .prepare(
+          `SELECT w.id as workflow_id, n.id as node_id, n.config FROM workflows w
+           JOIN workflow_nodes n ON n.workflow_id = w.id
+           WHERE w.enabled = 1 AND n.node_type = 'trigger' AND n.kind = 'app_launch'`
+        )
+        .all() as { workflow_id: string; node_id: string; config: string }[];
+
+      for (const r of launchRows) {
+        let c: Record<string, unknown> = {};
+        try {
+          c = JSON.parse(r.config) as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+        const procNeedle = String(c['process'] ?? '');
+        if (!procNeedle.trim()) continue;
+        const running = procList.some((p) => processMatchesConfig(procNeedle, p.name));
+        const key = `${r.workflow_id}:${r.node_id}`;
+        const was = this.appLaunchWasRunning.get(key) ?? false;
+        if (running && !was) {
+          void this.engine.runWorkflow(r.workflow_id, 'app_launch');
+          this.recordTriggerFire(r.workflow_id, r.node_id);
+        }
+        this.appLaunchWasRunning.set(key, running);
+      }
+
       const load = await si.currentLoad();
       const mem = await si.mem();
       const cpu = load.currentLoad ?? 0;
@@ -252,6 +375,16 @@ export class TriggerManager {
     this.jobs.clear();
     for (const w of this.watchers.values()) void w.close();
     this.watchers.clear();
+    for (const t of this.intervalTimers.values()) clearInterval(t);
+    this.intervalTimers.clear();
+    for (const off of this.powerCleanups) {
+      try {
+        off();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.powerCleanups.length = 0;
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
@@ -259,5 +392,7 @@ export class TriggerManager {
     this.lastUsbCount = null;
     this.lastIdleFire.clear();
     this.lastMemTriggerFire.clear();
+    this.lastPowerEventFire.clear();
+    this.appLaunchWasRunning.clear();
   }
 }

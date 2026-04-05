@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fsp from 'node:fs/promises';
+import { clipboard, shell } from 'electron';
 import type { WorkflowNodeRow } from '../types';
 import { interpolateConfigString } from './variable-interpolation';
 import { runOpenApplication } from '../actions/open-app.action';
@@ -135,6 +136,83 @@ export async function executeActionNode(
             default:
               return { status: 'failure', message: label, durationMs: Date.now() - start, error: `Unknown operation: ${op}` };
           }
+          return { status: 'success', message: label, durationMs: Date.now() - start };
+        } catch (e) {
+          return {
+            status: 'failure',
+            message: label,
+            durationMs: Date.now() - start,
+            error: e instanceof Error ? e.message : String(e),
+          };
+        }
+      }
+      case 'open_url': {
+        const label = String(config['label'] ?? 'Open URL');
+        const raw = String(config['url'] ?? '').trim();
+        let parsed: URL;
+        try {
+          parsed = new URL(raw);
+        } catch {
+          return {
+            status: 'failure',
+            message: label,
+            durationMs: Date.now() - start,
+            error: 'Invalid URL',
+          };
+        }
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          return {
+            status: 'failure',
+            message: label,
+            durationMs: Date.now() - start,
+            error: 'Only http and https URLs are allowed',
+          };
+        }
+        await shell.openExternal(parsed.toString());
+        return { status: 'success', message: label, durationMs: Date.now() - start };
+      }
+      case 'clipboard_write': {
+        const label = String(config['label'] ?? 'Clipboard');
+        const text = String(config['text'] ?? '');
+        clipboard.writeText(text);
+        return { status: 'success', message: label, durationMs: Date.now() - start };
+      }
+      case 'write_text_file': {
+        const label = String(config['label'] ?? 'Write text file');
+        const pathStr = String(config['path'] ?? '').trim();
+        const content = String(config['content'] ?? '');
+        const append = Boolean(config['append']);
+        if (!pathStr) {
+          return { status: 'failure', message: label, durationMs: Date.now() - start, error: 'Missing path' };
+        }
+        try {
+          if (append) {
+            await fsp.appendFile(pathStr, content, 'utf8');
+          } else {
+            await fsp.writeFile(pathStr, content, 'utf8');
+          }
+          return { status: 'success', message: label, durationMs: Date.now() - start };
+        } catch (e) {
+          return {
+            status: 'failure',
+            message: label,
+            durationMs: Date.now() - start,
+            error: e instanceof Error ? e.message : String(e),
+          };
+        }
+      }
+      case 'lock_workstation': {
+        const label = String(config['label'] ?? 'Lock screen');
+        if (process.platform !== 'win32') {
+          return {
+            status: 'failure',
+            message: label,
+            durationMs: Date.now() - start,
+            error: 'lock_workstation is supported on Windows only',
+          };
+        }
+        try {
+          await execFileAsync('rundll32.exe', ['user32.dll,LockWorkStation'], { windowsHide: true });
           return { status: 'success', message: label, durationMs: Date.now() - start };
         } catch (e) {
           return {

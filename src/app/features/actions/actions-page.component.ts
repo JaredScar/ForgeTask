@@ -16,6 +16,10 @@ const BASIC: ActionItem[] = [
   { kind: 'audio_control', title: 'Audio Control', desc: 'Volume and mute', icon: '🔊', pro: false },
   { kind: 'kill_process', title: 'Kill Process', desc: 'End a process by name or PID', icon: '⛔', pro: false },
   { kind: 'file_operation', title: 'File Operation', desc: 'Copy, move, delete, or mkdir', icon: '📋', pro: false },
+  { kind: 'open_url', title: 'Open URL', desc: 'Open a link in the default browser', icon: '🔗', pro: false },
+  { kind: 'clipboard_write', title: 'Set clipboard', desc: 'Put text on the system clipboard', icon: '📌', pro: false },
+  { kind: 'write_text_file', title: 'Write text file', desc: 'Write or append a UTF-8 text file', icon: '📝', pro: false },
+  { kind: 'lock_workstation', title: 'Lock screen', desc: 'Lock Windows session', icon: '🔒', pro: false },
 ];
 
 const ADVANCED: ActionItem[] = [

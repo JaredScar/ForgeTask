@@ -22,6 +22,10 @@ export function defaultTriggerConfig(kind: string): Record<string, unknown> {
       return { threshold: 85, comparison: 'above', label: 'Memory threshold' };
     case 'device_trigger':
       return { event: 'connect', deviceType: 'usb', label: 'USB device change' };
+    case 'interval_trigger':
+      return { intervalMinutes: 30, label: 'Every 30 minutes' };
+    case 'power_event':
+      return { event: 'resume', label: 'When system resumes' };
     default:
       return { label: kind };
   }
@@ -60,6 +64,14 @@ export function defaultActionConfig(kind: string): Record<string, unknown> {
       return { processName: 'notepad.exe', label: 'Kill process' };
     case 'file_operation':
       return { operation: 'copy', source: '', destination: '', label: 'File operation' };
+    case 'open_url':
+      return { url: 'https://example.com', label: 'Open URL' };
+    case 'clipboard_write':
+      return { text: '', label: 'Copy to clipboard' };
+    case 'write_text_file':
+      return { path: '', content: '', append: false, label: 'Write text file' };
+    case 'lock_workstation':
+      return { label: 'Lock screen' };
     default:
       return { label: kind };
   }

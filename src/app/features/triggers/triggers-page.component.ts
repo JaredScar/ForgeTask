@@ -8,6 +8,8 @@ type TriggerItem = { kind: string; title: string; desc: string; icon: string; pr
 
 const BASIC: TriggerItem[] = [
   { kind: 'time_schedule', title: 'Time Schedule', desc: 'Run at specific times or intervals', icon: '🕐', pro: false },
+  { kind: 'interval_trigger', title: 'Every N minutes', desc: 'Repeating timer without cron', icon: '⏱', pro: false },
+  { kind: 'power_event', title: 'Power & session', desc: 'AC/battery, sleep, resume, lock', icon: '🔋', pro: false },
   { kind: 'app_launch', title: 'App Launch', desc: 'When a process starts (polled)', icon: '🖥', pro: false },
   { kind: 'system_startup', title: 'System Startup', desc: 'Run on Windows login', icon: '↻', pro: false },
 ];

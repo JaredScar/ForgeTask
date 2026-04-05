@@ -21,6 +21,27 @@ export const NODE_CONFIG_SCHEMAS: Record<string, SchemaField[]> = {
     { key: 'label', label: 'Label', type: 'text' },
     { key: 'process', label: 'Process (.exe)', type: 'text', placeholder: 'notepad.exe' },
   ],
+  interval_trigger: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'intervalMinutes', label: 'Interval (minutes)', type: 'number', placeholder: '30' },
+  ],
+  power_event: [
+    { key: 'label', label: 'Label', type: 'text' },
+    {
+      key: 'event',
+      label: 'When',
+      type: 'select',
+      options: [
+        { value: 'on-ac', label: 'Plugged in (AC power)' },
+        { value: 'on-battery', label: 'On battery' },
+        { value: 'resume', label: 'System resumed from sleep' },
+        { value: 'suspend', label: 'System suspending' },
+        { value: 'lock-screen', label: 'Session locked' },
+        { value: 'unlock-screen', label: 'Session unlocked' },
+        { value: 'shutdown', label: 'System shutting down' },
+      ],
+    },
+  ],
   network_change: [
     { key: 'label', label: 'Label', type: 'text' },
     { key: 'ssid', label: 'SSID (empty = any)', type: 'text' },
@@ -201,6 +222,21 @@ export const NODE_CONFIG_SCHEMAS: Record<string, SchemaField[]> = {
     { key: 'source', label: 'Source path', type: 'text' },
     { key: 'destination', label: 'Destination', type: 'text', placeholder: 'For copy/move/rename' },
   ],
+  open_url: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'url', label: 'URL (https://…)', type: 'text', placeholder: 'https://example.com' },
+  ],
+  clipboard_write: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'text', label: 'Text', type: 'textarea' },
+  ],
+  write_text_file: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'path', label: 'File path', type: 'text' },
+    { key: 'content', label: 'Content', type: 'textarea' },
+    { key: 'append', label: 'Append (don’t overwrite)', type: 'boolean' },
+  ],
+  lock_workstation: [{ key: 'label', label: 'Label', type: 'text' }],
 };
 
 export function schemaForKind(kind: string): SchemaField[] | undefined {

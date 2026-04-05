@@ -393,6 +393,23 @@ export class BuilderPageComponent implements OnInit, OnDestroy {
         msgs.push(`App launch trigger “${this.label(n)}” needs a process name.`);
         bad.add(n.id);
       }
+      if (n.kind === 'interval_trigger') {
+        const im = Number(cfg['intervalMinutes'] ?? 0);
+        if (!Number.isFinite(im) || im < 1 || im > 1440) {
+          msgs.push(`Interval trigger “${this.label(n)}” needs interval minutes between 1 and 1440.`);
+          bad.add(n.id);
+        }
+      }
+      if (n.kind === 'open_url' && !String(cfg['url'] ?? '').trim()) {
+        msgs.push(`Open URL action “${this.label(n)}” needs a URL.`);
+        bad.add(n.id);
+      }
+      if (n.kind === 'write_text_file') {
+        if (!String(cfg['path'] ?? '').trim()) {
+          msgs.push(`Write text file “${this.label(n)}” needs a file path.`);
+          bad.add(n.id);
+        }
+      }
     }
     return { msgs, bad };
   }
