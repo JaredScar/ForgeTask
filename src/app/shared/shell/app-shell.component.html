@@ -69,11 +69,14 @@
   style="-webkit-app-region: drag"
 >
   <div class="flex items-center gap-3" style="-webkit-app-region: no-drag">
-    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-tf-green/20 text-tf-green">
-      <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z" />
-      </svg>
-    </div>
+    <img
+      src="taskforge.png"
+      width="32"
+      height="32"
+      alt=""
+      class="h-8 w-8 shrink-0 rounded-lg object-contain"
+      aria-hidden="true"
+    />
     <span class="text-sm font-semibold tracking-tight">TaskForge</span>
     @if (proUnlocked()) {
       <span class="rounded-md bg-tf-green/15 px-1.5 py-0.5 text-[10px] font-medium text-tf-green">Pro</span>

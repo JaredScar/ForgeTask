@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, Menu, Tray, nativeImage } from 'electron';
 import { autoUpdater } from 'electron-updater';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { openDatabase } from './db/database';
 import { AutomationEngine } from './engine/automation-engine';
@@ -18,6 +19,22 @@ let isQuitting = false;
 /** Held for graceful WAL checkpoint + close on quit (avoids “lost” data after abrupt dev restarts). */
 let appDb: ReturnType<typeof openDatabase> | null = null;
 
+/** Resolve a file under `public/` for both dev (`dist-electron/../public`) and packaged app. */
+function resolvePublicAsset(fileName: string): string | undefined {
+  const candidates = [
+    path.join(__dirname, '..', 'public', fileName),
+    path.join(app.getAppPath(), 'public', fileName),
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {
+      /* ignore */
+    }
+  }
+  return undefined;
+}
+
 function shutdownDatabase(): void {
   if (!appDb) return;
   const d = appDb;
@@ -35,6 +52,7 @@ function shutdownDatabase(): void {
 }
 
 function createWindow(): void {
+  const iconPath = resolvePublicAsset('taskforge.png');
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -42,6 +60,7 @@ function createWindow(): void {
     minHeight: 640,
     backgroundColor: '#0a0a0a',
     show: false,
+    ...(iconPath ? { icon: iconPath } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -72,21 +91,28 @@ function createWindow(): void {
 }
 
 function createTray(): void {
-  const iconCandidates = [
-    path.join(__dirname, '../public/favicon.ico'),
-    path.join(app.getAppPath(), 'public/favicon.ico'),
-  ];
   let img = nativeImage.createEmpty();
-  for (const p of iconCandidates) {
+  const pngPath = resolvePublicAsset('taskforge.png');
+  const tryPath = (filePath: string): boolean => {
     try {
-      const i = nativeImage.createFromPath(p);
-      if (!i.isEmpty()) {
-        img = i;
-        break;
+      if (!fs.existsSync(filePath)) return false;
+      let i = nativeImage.createFromPath(filePath);
+      if (i.isEmpty()) return false;
+      if (process.platform === 'win32' && filePath.endsWith('.png')) {
+        const { width, height } = i.getSize();
+        if (width > 32 || height > 32) {
+          i = i.resize({ width: 32, height: 32 });
+        }
       }
+      img = i;
+      return true;
     } catch {
-      /* try next */
+      return false;
     }
+  };
+  if (!pngPath || !tryPath(pngPath)) {
+    const ico = resolvePublicAsset('favicon.ico');
+    if (ico) tryPath(ico);
   }
   tray = new Tray(img);
   tray.setToolTip('TaskForge');

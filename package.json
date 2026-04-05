@@ -27,6 +27,7 @@
     "directories": {
       "output": "release"
     },
+    "icon": "public/taskforge.png",
     "files": [
       "dist/taskforge/browser/**/*",
       "dist-electron/**/*",

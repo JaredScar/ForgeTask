@@ -6,7 +6,16 @@ import { Router } from '@angular/router';
   imports: [],
   template: `
     <div class="mx-auto max-w-2xl">
-      <h1 class="text-2xl font-semibold tracking-tight">Welcome to TaskForge</h1>
+      <div class="flex flex-col items-center text-center sm:items-start sm:text-left">
+        <img
+          src="taskforge.png"
+          width="96"
+          height="96"
+          alt="TaskForge"
+          class="mb-4 h-24 w-24 rounded-2xl object-contain shadow-lg shadow-black/30"
+        />
+        <h1 class="text-2xl font-semibold tracking-tight">Welcome to TaskForge</h1>
+      </div>
       <p class="mt-2 text-sm text-tf-muted">
         A modern replacement for Windows Task Scheduler — build automations with triggers, conditions, and actions.
       </p>
