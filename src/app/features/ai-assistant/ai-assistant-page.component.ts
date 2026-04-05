@@ -20,6 +20,22 @@ type DraftPreview = {
 
 type ChatTurn = { role: 'user' | 'assistant'; content: string };
 
+/** Keep recent turns so prompts stay within a reasonable context budget (PLAN §10.3). */
+const MAX_CONVERSATION_CHARS = 10_000;
+
+function trimConversationForModel(turns: ChatTurn[]): ChatTurn[] {
+  const out: ChatTurn[] = [];
+  let total = 0;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const t = turns[i];
+    const len = t.content.length;
+    if (total + len > MAX_CONVERSATION_CHARS && out.length > 0) break;
+    out.push(t);
+    total += len;
+  }
+  return out.reverse();
+}
+
 @Component({
   selector: 'app-ai-assistant-page',
   imports: [FormsModule, RouterLink],
@@ -123,7 +139,7 @@ export class AiAssistantPageComponent {
     this.draftWorkflowId.set(null);
     this.errorText.set('');
     this.streamPreview.set('');
-    const history = this.conversation().map((m) => ({ role: m.role, content: m.content }));
+    const history = trimConversationForModel(this.conversation()).map((m) => ({ role: m.role, content: m.content }));
     const offToken = this.ipc.api.ai.onStreamToken((chunk) => {
       this.streamPreview.update((s) => s + chunk);
     });

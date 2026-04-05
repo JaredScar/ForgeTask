@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
+import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
 
 @Component({
   selector: 'app-settings-page',
@@ -133,17 +134,27 @@ import { ToastService } from '../../core/services/toast.service';
       </div>
 
       <div class="rounded-xl border border-tf-border bg-tf-card p-4">
-        <h2 class="text-sm font-medium">Data export</h2>
+        <h2 class="text-sm font-medium">Backup &amp; restore</h2>
         <p class="mt-1 text-xs text-tf-muted">
-          Save workflows, graph, variables, and non-secret settings to a ZIP file on this computer (JSON inside). Useful for backups before major changes.
+          Export saves workflows, graph, variables, and non-secret settings as <code class="text-[11px] text-neutral-500">taskforge-data.json</code> inside a ZIP.
+          Import <strong class="text-amber-100/90">replaces all workflows</strong> (and execution history for them), all variables, and merges non-secret settings from the file. Your license key and API secrets are never imported.
         </p>
-        <button
-          type="button"
-          (click)="exportZip()"
-          class="mt-3 rounded-lg border border-tf-border px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
-        >
-          Export data as ZIP…
-        </button>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            (click)="exportZip()"
+            class="rounded-lg border border-tf-border px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+          >
+            Export data as ZIP…
+          </button>
+          <button
+            type="button"
+            (click)="importZip()"
+            class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-100 hover:bg-amber-500/15"
+          >
+            Import from ZIP…
+          </button>
+        </div>
       </div>
     </div>
   `,
@@ -152,6 +163,7 @@ export class SettingsPageComponent implements OnInit {
   protected readonly ipc = inject(IpcService);
   private readonly toast = inject(ToastService);
   private readonly route = inject(ActivatedRoute);
+  private readonly confirm = inject(ConfirmDialogService);
 
   protected openaiKey = '';
   protected entitlementKey = '';
@@ -169,6 +181,10 @@ export class SettingsPageComponent implements OnInit {
   protected readonly licenseMode = signal('local');
 
   async ngOnInit(): Promise<void> {
+    await this.loadSettingsForm();
+  }
+
+  private async loadSettingsForm(): Promise<void> {
     this.showUnlockBanner.set(this.route.snapshot.queryParamMap.get('unlock') === '1');
     const ek = await this.ipc.api.settings.get('pro_entitlement_key');
     this.entitlementKey = ek ?? '';
@@ -250,6 +266,30 @@ export class SettingsPageComponent implements OnInit {
       else this.toast.info('Export cancelled');
     } catch {
       this.toast.error('Could not export data');
+    }
+  }
+
+  async importZip(): Promise<void> {
+    const ok = await this.confirm.confirm({
+      title: 'Replace workflows from backup?',
+      message:
+        'This will delete all current workflows and their run history, replace all variables, and merge non-secret settings from the ZIP. Your organization license and API keys on this device are not changed.',
+      confirmLabel: 'Import',
+    });
+    if (!ok) return;
+    try {
+      const r = await this.ipc.api.data.importZip();
+      if (!r.ok) {
+        if (r.error === 'cancelled') return;
+        this.toast.error(r.error);
+        return;
+      }
+      this.toast.success(
+        `Imported ${r.workflows} workflow(s), ${r.variables} variable(s); ${r.settingsApplied} setting row(s) merged.`
+      );
+      await this.loadSettingsForm();
+    } catch {
+      this.toast.error('Could not import data');
     }
   }
 }

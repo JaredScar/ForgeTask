@@ -1,5 +1,6 @@
-import { Component, EventEmitter, Input, Output, computed, signal } from '@angular/core';
+import { Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ToastService } from '../../../core/services/toast.service';
 import { NODE_CATALOG, type CatalogNodeType, type NodeCatalogEntry } from '../../../shared/constants/node-catalog';
 import { defaultActionConfig, defaultConditionConfig, defaultTriggerConfig } from '../../../shared/constants/catalog-defaults';
 
@@ -48,9 +49,10 @@ function defaultConfigForKind(nodeType: CatalogNodeType, kind: string): Record<s
             @for (e of g.items; track e.kind) {
               <button
                 type="button"
-                (click)="pick(e)"
-                [disabled]="e.tier === 'pro' && !proUnlocked()"
-                class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-tf-bg disabled:cursor-not-allowed disabled:opacity-40"
+                (click)="attemptPick(e)"
+                class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-tf-bg"
+                [class.opacity-45]="e.tier === 'pro' && !proUnlocked()"
+                [class.cursor-not-allowed]="e.tier === 'pro' && !proUnlocked()"
               >
                 <span class="text-xl">{{ e.icon }}</span>
                 <span class="min-w-0 flex-1">
@@ -58,7 +60,12 @@ function defaultConfigForKind(nodeType: CatalogNodeType, kind: string): Record<s
                   <span class="mt-0.5 block text-xs text-tf-muted">{{ e.description }}</span>
                 </span>
                 @if (e.tier === 'pro') {
-                  <span class="shrink-0 rounded bg-tf-green/20 px-1.5 py-0.5 text-[10px] text-tf-green">Pro</span>
+                  <span class="flex shrink-0 items-center gap-1">
+                    @if (!proUnlocked()) {
+                      <span class="text-sm" title="Requires Pro license">🔒</span>
+                    }
+                    <span class="rounded bg-tf-green/20 px-1.5 py-0.5 text-[10px] text-tf-green">Pro</span>
+                  </span>
                 }
               </button>
             }
@@ -74,6 +81,8 @@ function defaultConfigForKind(nodeType: CatalogNodeType, kind: string): Record<s
   `,
 })
 export class NodePickerComponent {
+  private readonly toast = inject(ToastService);
+
   @Input({ required: true }) proUnlocked!: () => boolean;
   @Output() readonly picked = new EventEmitter<{
     nodeType: CatalogNodeType;
@@ -112,6 +121,14 @@ export class NodePickerComponent {
     }
     return [...byCat.entries()].map(([cat, items]) => ({ cat, items })).sort((a, b) => a.cat.localeCompare(b.cat));
   });
+
+  attemptPick(e: NodeCatalogEntry): void {
+    if (e.tier === 'pro' && !this.proUnlocked()) {
+      this.toast.warning('This node requires a Pro license — add your organization key in Settings (Unlock).');
+      return;
+    }
+    this.pick(e);
+  }
 
   pick(e: NodeCatalogEntry): void {
     const config = defaultConfigForKind(e.nodeType, e.kind);

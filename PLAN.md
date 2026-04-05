@@ -1,6 +1,6 @@
 # TaskForge – Full Implementation Plan
 
-> Last updated: 2026-04-04 · *Implementation status is reflected in §22 and inline ✅ notes where noted.*
+> Last updated: 2026-04-05 · *Implementation status is reflected in §22 and inline ✅ notes where noted.*
 >
 > This plan maps every piece of dummy/hardcoded data and every incomplete feature in the app to concrete implementation tasks. Tasks are grouped by feature area and ordered by dependency. Each item lists the files involved and the acceptance criteria.
 >
@@ -462,9 +462,9 @@ npm install chart.js ng2-charts
 
 ### 10.3 — Conversation History (partial)
 
-**Implemented:** Session `conversation` signal; prior turns passed as `messages` into `ai:parse` / `ai:parseStream` (`ai-assistant-page.component.ts`).
+**Implemented:** Session `conversation` signal; prior turns passed as `messages` into `ai:parse` / `ai:parseStream` (`ai-assistant-page.component.ts`). **Token budget:** recent turns are trimmed to ~10k characters before each stream request so history does not grow without bound.
 
-**Remaining:** Token-budget trimming, richer multi-turn UX (e.g. “change the trigger to 8 AM” updating the last draft without always creating a new workflow).
+**Remaining:** Richer multi-turn UX (e.g. “change the trigger to 8 AM” updating the last draft without always creating a new workflow).
 
 ---
 
@@ -587,7 +587,9 @@ npm install chart.js ng2-charts
 
 ### 14.1 — Single Setting (INCOMPLETE)
 
-**Current state:** Only the OpenAI API key is configurable.
+**Current state:** OpenAI key, license, and core automation prefs (log retention, engine auto-start, notifications, max concurrency, confirm delete) are wired. **Backup:** export ZIP (`data:exportZip`) and **import ZIP** (`data:importZip`, replaces workflows/variables, merges non-secret settings) are implemented in Settings. Remaining: language, theme, sound/position toggles, developer default JSON, reset defaults, clear-all danger zone, etc.
+
+**Original scope note:** Early plan text referred to “only OpenAI”; that is no longer accurate for the sections below.
 
 **What to build — new settings sections:**
 
@@ -954,10 +956,10 @@ A dedicated license card is the first section in Settings (copy may say **“Org
 | 1 | **Online license validation** — full design in **§20.9**. Hybrid with local HMAC: server is source of truth for revocation, seats, and paid keys; optional offline grace. | V2 |
 | 2 | **Key expiry** — encode `exp` (Unix timestamp) in the payload; `validateProEnterpriseKey` checks it. | ✅ Done (local payload `exp`) |
 | 3 | **Per-seat scope** — encode `seats: N` in the payload; enforce a concurrent-user limit from the Team page. | V3 |
-| 4 | **Upgrade CTA** — replace the "License key required" sidebar text with a proper upgrade card showing tier comparison and a link to a purchase page. | V2 |
+| 4 | **Upgrade CTA** — replace the "License key required" sidebar text with a proper upgrade card showing tier comparison and a link to a purchase page. | ✅ Done (sidebar card + `TASKFORGE_UPGRADE_URL` in `product-urls.ts`) |
 | 5 | **`IsTierDirective`** — an Angular structural directive `*appIsTier="'pro'"` as a reusable alternative to the current `@if (proUnlocked())` pattern, once the license state is exposed as a global signal. | V2 |
 | 6 | **Audit key activations** — write an audit log entry when a valid key is saved or cleared. | V2 |
-| 7 | **Builder node picker tier badges** — once the visual node picker (§3.1) is built, show a lock icon on Pro node types and block insertion rather than only blocking saves. | V2 |
+| 7 | **Builder node picker tier badges** — once the visual node picker (§3.1) is built, show a lock icon on Pro node types and block insertion rather than only blocking saves. | ✅ Done (🔒 + toast; insertion blocked when locked) |
 
 ---
 
@@ -1158,7 +1160,7 @@ Remove all dummy data, connect existing UI to real IPC, fix broken interactions.
 | 13 | Logs auto-refresh (`logs:new` + subscribe) | §6.1 | ✅ Done |
 | 14 | Migration system (`schema_migrations` + `runMigrations`) | §18.3 | ✅ Done |
 | 15 | Analytics trend labels (real deltas) | §8.1 | ✅ Done |
-| 16 | Settings: log retention, notifications, engine | §14.1 | Partial — core settings keys exist; see §14.1 for any remaining toggles |
+| 16 | Settings: log retention, notifications, engine | §14.1 | Partial — core prefs + backup ZIP export/import; see §14.1 for remaining toggles |
 
 ### Phase 2 — Feature Completion (3–4 weeks)
 Complete all partially-built features and add the missing interactions.
@@ -1198,18 +1200,18 @@ The flagship visual canvas builder and advanced integrations.
 | 1 | Visual graph canvas builder | §3.3 |
 | 2 | Real-time log step progress | §6.2 · ✅ Done (live panel + `logs:new` on run start) |
 | 3 | Workflow run history inline panel | §2.2 · ✅ Done (last run panel on workflow cards) |
-| 4 | AI conversation history | §10.3 |
+| 4 | AI conversation history | §10.3 · Partial (trim + multi-turn API; draft-edit UX still open) |
 | 5 | Multiple API keys with scopes | §12.1, §12.2 |
 | 6 | Remote marketplace registry | §9.2 · ✅ Done (`TASKFORGE_MARKETPLACE_URL` + cache) |
 | 7 | Marketplace "installed" state | §9.3 · ✅ Done (`source_template_id` + badge) |
 | 8 | Trigger state persistence + missed trigger replay | §16.2 |
 | 9 | Role-based UI (team permissions) | §11.3 |
 | 10 | Keyboard shortcuts | §21.5 · ✅ Done |
-| 11 | Data export / import (ZIP) | §14.1 |
+| 11 | Data export / import (ZIP) | §14.1 · ✅ Export + import (`data:importZip`); other settings rows still §14.1 |
 | 12 | Online license validation (client: cache, grace, IPC) | §20.9 · Partial (`license-remote.ts`, `hybrid` / `online_strict`, startup refresh) |
 | 13 | License key expiry (`exp` field in payload) | §20.8 · ✅ client decode |
-| 14 | Upgrade CTA card replacing the locked-sidebar text | §20.8 |
-| 15 | Builder node picker tier badges (lock icon on Pro nodes) | §20.8 |
+| 14 | Upgrade CTA card replacing the locked-sidebar text | §20.8 · ✅ Done |
+| 15 | Builder node picker tier badges (lock icon on Pro nodes) | §20.8 · ✅ Done |
 
 ### Phase 4 — V3 AI & Platform (Future)
 Post-MVP AI enhancements and platform expansion.
@@ -1253,7 +1255,7 @@ Post-MVP AI enhancements and platform expansion.
 | REST API key (generate, view) | `/api-access` |
 | Audit logs (view, export) | `/audit-logs` |
 | Advanced triggers: Network Change, File Change, CPU/Memory Usage, Device Connected | Triggers page + Builder |
-| Advanced actions: Run Script, HTTP Request | Actions page + Builder |
+| Advanced actions: Run Script, HTTP Request, ZIP, download, WOL, port check, screenshot | Actions page + Builder |
 
 ### What is always free?
 
@@ -1298,4 +1300,4 @@ Customers receive an **organization license key** from checkout or your billing 
 
 *End of plan. Each section above is a self-contained unit of work; they can be assigned individually to implement in any order within a phase, as long as phase 1 prerequisites (real data foundation, IPC error handling) are completed first.*
 
-**Note (2026-04-04):** Large Phase 3 / Phase 4 items (visual canvas §3.3, multi-turn AI §10.3 polish, RBAC §11.3, ZIP import §14.1, full online license server §20.9.6, etc.) remain **future** work where not marked ✅ — the checklist reflects the repo.
+**Note (2026-04-05):** Large Phase 3 / Phase 4 items (visual canvas §3.3, multi-turn AI draft-edit UX §10.3, RBAC §11.3, remaining Settings §14.1 toggles, full online license server §20.9.6, etc.) remain **future** work where not marked ✅ — the checklist reflects the repo.

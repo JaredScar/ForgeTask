@@ -97,6 +97,12 @@ export interface IpcInvokeMap {
     res: AiDraftResult;
   };
   'data:exportZip': { req: []; res: string | null };
+  'data:importZip': {
+    req: [];
+    res:
+      | { ok: true; workflows: number; variables: number; settingsApplied: number }
+      | { ok: false; error: string };
+  };
   'app:getPaths': { req: []; res: { userData: string } };
   'app:getStats': { req: []; res: AppStats };
 }

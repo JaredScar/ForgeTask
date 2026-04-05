@@ -115,6 +115,10 @@ contextBridge.exposeInMainWorld('taskForge', {
   },
   data: {
     exportZip: () => inv<string | null>('data:exportZip'),
+    importZip: () =>
+      inv<{ ok: true; workflows: number; variables: number; settingsApplied: number } | { ok: false; error: string }>(
+        'data:importZip'
+      ),
   },
   dialog: {
     pickExecutable: () => inv<string | null>('dialog:pickExecutable'),

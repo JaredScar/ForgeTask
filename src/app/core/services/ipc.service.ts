@@ -383,6 +383,7 @@ export class IpcService {
       },
       data: {
         exportZip: async () => null,
+        importZip: async () => ({ ok: false as const, error: 'Import is only available in the desktop app.' }),
       },
       app: {
         getPaths: async () => ({ userData: '' }),

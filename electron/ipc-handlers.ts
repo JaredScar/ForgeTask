@@ -36,6 +36,7 @@ import {
 } from './license-remote';
 import * as si from 'systeminformation';
 import { isLocalDevOpenAiPlaceholder } from './dev-placeholders';
+import { importDataFromZipBuffer } from './data-import';
 
 function parseScopesJsonSafe(raw: string): string[] {
   try {
@@ -958,6 +959,25 @@ export function registerIpcHandlers(
       void archive.finalize();
     });
     return filePath;
+  });
+
+  ipcHandle('data:importZip', async () => {
+    const win = getWin();
+    const { filePaths, canceled } = win
+      ? await dialog.showOpenDialog(win, {
+          properties: ['openFile'],
+          filters: [{ name: 'ZIP', extensions: ['zip'] }],
+        })
+      : await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'ZIP', extensions: ['zip'] }] });
+    if (canceled || !filePaths?.[0]) {
+      return { ok: false as const, error: 'cancelled' };
+    }
+    const buf = await fs.promises.readFile(filePaths[0]);
+    const result = importDataFromZipBuffer(db, buf);
+    if (!result.ok) return result;
+    triggers.reloadFromDatabase();
+    writeAuditLog(db, 'data.import', `zip:${filePaths[0]}`);
+    return result;
   });
 
   ipcHandle('app:getPaths', () => ({
