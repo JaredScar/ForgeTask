@@ -165,8 +165,8 @@ export class AiAssistantPageComponent {
       const heuristicHint =
         draft.source === 'heuristic'
           ? (draft.confidence != null && draft.confidence < 0.52
-              ? 'Low-confidence keyword match — refine the trigger and action in Builder. Add an OpenAI key in Settings for full model output.'
-              : `Keyword-based draft (~${Math.round((draft.confidence ?? 0.5) * 100)}% match). Configure an OpenAI API key for richer AI drafts.`)
+              ? 'Low-confidence keyword match — refine the trigger and action in Builder. In Settings, add an OpenAI API key (cloud) or switch to Local gateway with Ollama + taskforge-local-ai-gateway running.'
+              : `Keyword-based draft (~${Math.round((draft.confidence ?? 0.5) * 100)}% match). For full model output, use OpenAI in Settings or Local gateway (see local-ai-gateway/README.md).`)
           : undefined;
       let id: string;
       const mapped = nodes.map((n, i) => ({

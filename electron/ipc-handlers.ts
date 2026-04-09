@@ -12,9 +12,17 @@ import { findMarketplaceTemplate, resolveMarketplaceCatalog } from './marketplac
 import {
   buildWorkflowParseMessages,
   completeWorkflowJson,
+  completeWorkflowJsonLocal,
+  DEFAULT_LOCAL_AI_BASE_URL,
+  DEFAULT_LOCAL_AI_MODEL,
+  OPENAI_CHAT_COMPLETIONS_URL,
+  OPENAI_WORKFLOW_MODEL,
   parseWorkflowFromModelText,
   streamWorkflowCompletion,
+  streamWorkflowCompletionLocal,
+  taskforgeWorkflowCompletionUrl,
   type AiChatMsg,
+  type ChatCompletionsCall,
 } from './ai-workflow';
 import { writeAuditLog } from './db/audit';
 import { defaultActionConfig, defaultConditionConfig, defaultTriggerConfig, stubTimeTriggerConfig } from './catalog-starters';
@@ -42,6 +50,42 @@ import * as si from 'systeminformation';
 import { isLocalDevOpenAiPlaceholder } from './dev-placeholders';
 import { importDataFromZipBuffer } from './data-import';
 import { heuristicWorkflowFromPrompt } from './ai-heuristic';
+
+function readSettingValue(db: Database.Database, key: string): string | null {
+  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+/** `null` → keyword heuristic (OpenAI provider but no real API key). */
+function resolveAiChatCall(db: Database.Database): ChatCompletionsCall | null {
+  const providerRaw = (readSettingValue(db, 'ai_provider') ?? 'openai').trim().toLowerCase();
+  const useLocal = providerRaw === 'local';
+
+  if (useLocal) {
+    const base = (readSettingValue(db, 'local_ai_base_url') ?? '').trim() || DEFAULT_LOCAL_AI_BASE_URL;
+    const model = (readSettingValue(db, 'local_ai_model') ?? '').trim() || DEFAULT_LOCAL_AI_MODEL;
+    const token = (readSettingValue(db, 'local_ai_gateway_token') ?? '').trim();
+    return {
+      endpointUrl: taskforgeWorkflowCompletionUrl(base),
+      model,
+      apiKey: token || null,
+      requireLoopback: true,
+      workflowMode: 'local_gateway',
+    };
+  }
+
+  const apiKey = readSettingValue(db, 'openai_api_key');
+  if (!apiKey || isLocalDevOpenAiPlaceholder(apiKey)) {
+    return null;
+  }
+  return {
+    endpointUrl: OPENAI_CHAT_COMPLETIONS_URL,
+    model: OPENAI_WORKFLOW_MODEL,
+    apiKey,
+    requireLoopback: false,
+    workflowMode: 'openai',
+  };
+}
 
 function parseScopesJsonSafe(raw: string): string[] {
   try {
@@ -992,13 +1036,17 @@ export function registerIpcHandlers(
       assertProEnterprise(db);
       const prompt = typeof payload === 'string' ? payload : String(payload?.prompt ?? '');
       const history = typeof payload === 'object' && payload && Array.isArray(payload.messages) ? payload.messages : undefined;
-      const messages = buildWorkflowParseMessages(prompt, history);
-      const apiKey = (db.prepare(`SELECT value FROM settings WHERE key = 'openai_api_key'`).get() as { value: string } | undefined)?.value;
-      if (!apiKey || isLocalDevOpenAiPlaceholder(apiKey)) {
+      const call = resolveAiChatCall(db);
+      if (!call) {
         return heuristicWorkflowFromPrompt(prompt);
       }
       try {
-        const json = (await completeWorkflowJson(apiKey, messages)) as Record<string, unknown>;
+        if (call.workflowMode === 'local_gateway') {
+          const json = (await completeWorkflowJsonLocal(call, { prompt, messages: history })) as Record<string, unknown>;
+          return { ...json, source: 'model' as const, confidence: 0.85 };
+        }
+        const messages = buildWorkflowParseMessages(prompt, history);
+        const json = (await completeWorkflowJson(call, messages)) as Record<string, unknown>;
         return { ...json, source: 'model' as const, confidence: 0.85 };
       } catch {
         return heuristicWorkflowFromPrompt(prompt);
@@ -1011,15 +1059,22 @@ export function registerIpcHandlers(
     const win = getWin();
     const send = (chunk: string) => win?.webContents.send('ai:streamToken', chunk);
     const prompt = String(payload?.prompt ?? '');
-    const apiKey = (db.prepare(`SELECT value FROM settings WHERE key = 'openai_api_key'`).get() as { value: string } | undefined)?.value;
-    if (!apiKey || isLocalDevOpenAiPlaceholder(apiKey)) {
+    const call = resolveAiChatCall(db);
+    if (!call) {
       const h = heuristicWorkflowFromPrompt(prompt);
       send(JSON.stringify(h));
       return h;
     }
-    const messages = buildWorkflowParseMessages(prompt, payload?.messages);
+    const history = Array.isArray(payload?.messages) ? payload.messages : undefined;
     try {
-      const full = await streamWorkflowCompletion(apiKey, messages, (c) => send(c));
+      const full =
+        call.workflowMode === 'local_gateway'
+          ? await streamWorkflowCompletionLocal(call, { prompt, messages: history }, (c) => send(c))
+          : await streamWorkflowCompletion(
+              call,
+              buildWorkflowParseMessages(prompt, history),
+              (c) => send(c)
+            );
       try {
         const parsed = parseWorkflowFromModelText(full) as Record<string, unknown>;
         return { ...parsed, source: 'model' as const, confidence: 0.85 };
@@ -1048,7 +1103,7 @@ export function registerIpcHandlers(
       variables: db.prepare(`SELECT * FROM variables`).all(),
       settings: db
         .prepare(
-          `SELECT key, value FROM settings WHERE key NOT IN ('openai_api_key', 'pro_entitlement_key', 'api_key', 'marketplace_cache_json')`
+          `SELECT key, value FROM settings WHERE key NOT IN ('openai_api_key', 'local_ai_gateway_token', 'pro_entitlement_key', 'api_key', 'marketplace_cache_json')`
         )
         .all(),
     };

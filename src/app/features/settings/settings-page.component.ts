@@ -86,24 +86,71 @@ import { ConfirmDialogService } from '../../core/services/confirm-dialog.service
         }
       </div>
       <div class="rounded-xl border border-tf-border bg-tf-card p-4">
-        <h2 class="text-sm font-medium">OpenAI API Key</h2>
-        <p class="mt-1 text-xs text-tf-muted">Optional. Stored locally for AI Workflow Assistant.</p>
+        <h2 class="text-sm font-medium">AI Workflow Assistant</h2>
+        <p class="mt-1 text-xs text-tf-muted">
+          Pro/Enterprise only. Choose cloud OpenAI or a local gateway (see <code class="text-[11px] text-neutral-500">local-ai-gateway/</code>).
+        </p>
         @if (!ipc.isElectron) {
           <p class="mt-2 text-xs text-amber-200/90">
-            Browser preview (<code class="text-[11px]">ng serve</code>): the field is pre-filled with a
-            <strong>non-functional</strong> placeholder. It is not sent to OpenAI. Use Electron for real keys.
+            Browser preview (<code class="text-[11px]">ng serve</code>): OpenAI field uses a
+            <strong>non-functional</strong> placeholder. Use Electron for real requests.
           </p>
         }
-        <input
-          type="password"
-          [(ngModel)]="openaiKey"
-          class="mt-3 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm"
-          placeholder="sk-..."
-        />
-        <button type="button" (click)="saveKey()" class="mt-3 rounded-lg bg-tf-green px-4 py-2 text-sm font-medium text-black">
-          Save key
+        <label class="mt-4 block text-xs text-tf-muted">Backend</label>
+        <select
+          [(ngModel)]="aiProvider"
+          class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm text-neutral-200"
+        >
+          <option value="openai">OpenAI (cloud)</option>
+          <option value="local">Local gateway (Ollama via TaskForge gateway)</option>
+        </select>
+        @if (aiProvider === 'openai') {
+          <label class="mt-4 block text-xs text-tf-muted">OpenAI API key</label>
+          <input
+            type="password"
+            [(ngModel)]="openaiKey"
+            class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm"
+            placeholder="sk-..."
+            autocomplete="off"
+          />
+        }
+        @if (aiProvider === 'local') {
+          <p class="mt-3 text-xs text-tf-muted">
+            Start <strong class="text-neutral-400">Ollama</strong>, then run <code class="text-[11px] text-neutral-500">npm start</code> in
+            <code class="text-[11px] text-neutral-500">local-ai-gateway/</code> (default <code class="text-[11px] text-neutral-500">127.0.0.1:11435</code>).
+          </p>
+          <label class="mt-3 block text-xs text-tf-muted">Gateway base URL</label>
+          <input
+            type="url"
+            [(ngModel)]="localAiBaseUrl"
+            class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm font-mono text-neutral-200"
+            placeholder="http://127.0.0.1:11435"
+            autocomplete="off"
+          />
+          <label class="mt-3 block text-xs text-tf-muted">Model name</label>
+          <input
+            type="text"
+            [(ngModel)]="localAiModel"
+            class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm font-mono text-neutral-200"
+            placeholder="llama3.2"
+            autocomplete="off"
+          />
+          <label class="mt-3 block text-xs text-tf-muted">Gateway token (optional)</label>
+          <p class="mt-1 text-[11px] text-tf-muted">
+            Only if <code class="text-neutral-500">TASKFORGE_GATEWAY_TOKEN</code> is set when starting the gateway.
+          </p>
+          <input
+            type="password"
+            [(ngModel)]="localAiGatewayToken"
+            class="mt-1 w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-2 text-sm"
+            placeholder="Leave empty if gateway has no token"
+            autocomplete="off"
+          />
+        }
+        <button type="button" (click)="saveAiSettings()" class="mt-4 rounded-lg bg-tf-green px-4 py-2 text-sm font-medium text-black">
+          Save AI settings
         </button>
-        @if (savedKey()) {
+        @if (savedAiSettings()) {
           <p class="mt-2 text-xs text-tf-green">Saved.</p>
         }
       </div>
@@ -232,7 +279,7 @@ import { ConfirmDialogService } from '../../core/services/confirm-dialog.service
         <h2 class="text-sm font-medium">Maintenance</h2>
         <p class="mt-1 text-xs text-tf-muted">
           Reset automation, UI, and trigger preferences (everything in “Automation &amp; logs” and “UI &amp; appearance”) to defaults.
-          Does not remove your license, OpenAI key, or workflows.
+          Does not remove your license, AI settings, or workflows.
         </p>
         <button
           type="button"
@@ -248,7 +295,7 @@ import { ConfirmDialogService } from '../../core/services/confirm-dialog.service
         <p class="mt-1 text-xs text-tf-muted">
           Permanently delete <strong class="text-neutral-300">all workflows</strong> (and their run history),
           <strong class="text-neutral-300">all variables</strong>, audit log entries, non–self team members, and stored API keys.
-          Your organization license and OpenAI API key fields in Settings are kept (values not wiped).
+          Your organization license and AI settings in Settings are kept (values not wiped).
         </p>
         <button
           type="button"
@@ -268,6 +315,11 @@ export class SettingsPageComponent implements OnInit {
   private readonly confirm = inject(ConfirmDialogService);
 
   protected openaiKey = '';
+  /** Matches `electron/ai-workflow.ts` defaults. */
+  protected aiProvider: 'openai' | 'local' = 'openai';
+  protected localAiBaseUrl = 'http://127.0.0.1:11435';
+  protected localAiModel = 'llama3.2';
+  protected localAiGatewayToken = '';
   protected entitlementKey = '';
   protected logRetentionDays = 30;
   protected logRetentionForever = false;
@@ -284,7 +336,7 @@ export class SettingsPageComponent implements OnInit {
   protected uiAccent: 'green' | 'blue' | 'amber' | 'violet' = 'green';
   protected toastPosition: 'top' | 'bottom' = 'bottom';
   protected builderShowJsonDefault = false;
-  protected readonly savedKey = signal(false);
+  protected readonly savedAiSettings = signal(false);
   protected readonly savedPrefs = signal(false);
   protected readonly showUnlockBanner = signal(false);
   /** unset | ok | invalid | network — feedback after save attempt */
@@ -313,6 +365,16 @@ export class SettingsPageComponent implements OnInit {
 
     const v = await this.ipc.api.settings.get('openai_api_key');
     this.openaiKey = v ?? '';
+    const ap = await this.ipc.api.settings.get('ai_provider');
+    this.aiProvider = ap === 'local' ? 'local' : 'openai';
+    const lb = await this.ipc.api.settings.get('local_ai_base_url');
+    if (lb != null && lb !== '') this.localAiBaseUrl = lb;
+    else this.localAiBaseUrl = 'http://127.0.0.1:11435';
+    const lm = await this.ipc.api.settings.get('local_ai_model');
+    if (lm != null && lm !== '') this.localAiModel = lm;
+    else this.localAiModel = 'llama3.2';
+    const lgt = await this.ipc.api.settings.get('local_ai_gateway_token');
+    this.localAiGatewayToken = lgt ?? '';
     const lr = await this.ipc.api.settings.get('log_retention_days');
     if (lr != null && lr !== '') this.logRetentionDays = Math.max(1, parseInt(lr, 10) || 30);
     const ea = await this.ipc.api.settings.get('engine_auto_start');
@@ -382,11 +444,15 @@ export class SettingsPageComponent implements OnInit {
     await this.saveEntitlement();
   }
 
-  async saveKey(): Promise<void> {
+  async saveAiSettings(): Promise<void> {
+    await this.ipc.api.settings.set('ai_provider', this.aiProvider);
     await this.ipc.api.settings.set('openai_api_key', this.openaiKey);
-    this.savedKey.set(true);
-    this.toast.success('API key saved');
-    setTimeout(() => this.savedKey.set(false), 2000);
+    await this.ipc.api.settings.set('local_ai_base_url', this.localAiBaseUrl.trim());
+    await this.ipc.api.settings.set('local_ai_model', this.localAiModel.trim());
+    await this.ipc.api.settings.set('local_ai_gateway_token', this.localAiGatewayToken);
+    this.savedAiSettings.set(true);
+    this.toast.success('AI settings saved');
+    setTimeout(() => this.savedAiSettings.set(false), 2000);
   }
 
   async savePrefs(): Promise<void> {
