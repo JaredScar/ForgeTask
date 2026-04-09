@@ -4,6 +4,7 @@ import AdmZip from 'adm-zip';
 /** Keys never applied from an import file (secrets and local cache). */
 const SETTINGS_IMPORT_BLOCKLIST = new Set([
   'openai_api_key',
+  'local_ai_gateway_token',
   'pro_entitlement_key',
   'api_key',
   'marketplace_cache_json',

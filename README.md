@@ -88,6 +88,16 @@ The **Free** tier includes core automation (workflows, basic triggers/actions, l
 
 If the window never opens and the console shows `NODE_MODULE_VERSION` / “compiled against a different Node.js version”, run `npm run rebuild:native` so the native module matches Electron (not your system Node).
 
+### Pro/Enterprise — local open-source AI (Ollama)
+
+The **AI Workflow Assistant** can call a **local gateway** instead of OpenAI. The gateway lives in [`local-ai-gateway/`](local-ai-gateway/) (intended as its own Git repo or **git submodule**). TaskForge sends `prompt` + optional chat history to **`POST /v1/taskforge/workflow-completion`**; the gateway applies the workflow system prompt and forwards **only to loopback** Ollama (no remote upstream). You can **bundle** the Ollama binary under `local-ai-gateway/binaries/` so `npm start` runs `ollama serve` in-house — see [`local-ai-gateway/binaries/README.md`](local-ai-gateway/binaries/README.md).
+
+1. Provide a local model (e.g. `ollama pull llama3.2`) with Ollama running, **or** place a bundled `ollama` binary and run `npm start` from `local-ai-gateway/` (default gateway `http://127.0.0.1:11435`).
+2. See [`local-ai-gateway/README.md`](local-ai-gateway/README.md) for env vars (upstream URL must stay loopback, optional Bearer token, `TASKFORGE_MANAGE_OLLAMA`).
+3. In **Settings → AI Workflow Assistant**, choose **Local gateway**, confirm the base URL and model, then **Save AI settings**.
+
+If you use submodules: `git submodule update --init --recursive` after clone.
+
 **Legacy strings:** [`electron/legacy-paths.ts`](electron/legacy-paths.ts) and [`src/app/core/legacy-onboarding-key.ts`](src/app/core/legacy-onboarding-key.ts) are the only places that still embed historical folder names, SQLite filenames, `localStorage` keys, email, or dev HMAC material from pre-TaskForge installs. They exist so migrations keep working; everything else uses TaskForge naming.
 
 ## Auto-updates
