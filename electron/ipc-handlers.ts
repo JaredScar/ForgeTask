@@ -136,7 +136,9 @@ export function registerIpcHandlers(
 
   ipcHandle('entitlement:refreshOnline', async () => {
     const r = await refreshLicenseOnline(db);
-    return { ok: r.ok, unlocked: isProEnterpriseUnlocked(db), error: r.error };
+    const unlocked = isProEnterpriseUnlocked(db);
+    writeAuditLog(db, unlocked ? 'entitlement.verified_online' : 'entitlement.verification_failed', 'organization_key');
+    return { ok: r.ok, unlocked, error: r.error };
   });
 
   ipcHandle('entitlement:setKey', async (_e, key: string) => {
@@ -838,6 +840,7 @@ export function registerIpcHandlers(
   });
 
   ipcHandle('data:clearUserData', () => {
+    writeAuditLog(db, 'data.clear_user_data', 'all');
     const tx = db.transaction(() => {
       db.prepare(`DELETE FROM workflows`).run();
       db.prepare(`DELETE FROM variables`).run();

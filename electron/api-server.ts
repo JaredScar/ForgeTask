@@ -51,10 +51,17 @@ function resolveBearerAuth(db: Database.Database, bearer: string): string[] | nu
   if (settingsKey && bearer === settingsKey) {
     return [SCOPE_ALL];
   }
-  const row = db.prepare(`SELECT scopes FROM api_keys WHERE token = ?`).get(bearer) as { scopes: string } | undefined;
+  const row = db.prepare(`SELECT id, scopes FROM api_keys WHERE token = ?`).get(bearer) as { id: string; scopes: string } | undefined;
   if (!row) return null;
   const scopes = parseScopesJson(row.scopes);
-  return scopes.length ? scopes : null;
+  if (!scopes.length) return null;
+  /* §12.2 — stamp last_used_at on each successful authentication. */
+  try {
+    db.prepare(`UPDATE api_keys SET last_used_at = ? WHERE id = ?`).run(new Date().toISOString(), row.id);
+  } catch {
+    /* non-fatal — column may not exist yet on old DBs before migration */
+  }
+  return scopes;
 }
 
 function workflowExists(db: Database.Database, workflowId: string): boolean {

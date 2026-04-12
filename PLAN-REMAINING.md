@@ -2,7 +2,7 @@
 
 > **Source of truth for scope:** [PLAN.md](./PLAN.md) (full product plan, history, and acceptance notes).  
 > **This file:** a **backlog-only** view — items **not** fully done per §22 and follow-up notes. Update both when you ship features.  
-> **Last synced:** 2026-04-11 (RBAC pass: Settings + API Access + AI Assistant Viewer guards; §16.1 app-launch poll replaced with targeted `tasklist` on Windows; §16.2 per-workflow `replay_missed` toggle + DB migration v7; workflow card UI modernization)
+> **Last synced:** 2026-04-11 (§10.3 AI conversation history thread + clear chat; §12.2 api_keys.last_used_at tracked + shown in table; §13.1 audit data:clearUserData + entitlement:refreshOnline; DB migration v8; Phase 3 rows 4, 5, 8, 9 marked ✅ in PLAN.md §22)
 
 ---
 
@@ -31,47 +31,57 @@
 
 ---
 
-## Phase 3 — V2 / advanced (not ✅ in §22)
+## Phase 3 — mostly complete ✅
 
 | # | Task | PLAN § | Status |
 |---|------|--------|--------|
-| 1 | Visual graph canvas builder (pan/zoom, edges, engine follows graph) | §3.3 | **Partial:** list-order edges persisted + topological run order in engine when edges exist. **Not started:** free-form canvas / branching UI. |
-| 4 | AI conversation / multi-turn polish | §10.3 | **Partial:** **"Refine last draft"** updates the same workflow via `workflows.update` (no new workflow). Further polish always possible. |
-| 5 | Multiple API keys + scopes | §12.1, §12.2 | **Partial:** scoped keys + enforcement existed; **added** `workflows:write` + `POST /v1/workflows`. |
-| 8 | Trigger state persistence + missed-trigger replay | §16.2 | **✅ Shipped 2026-04-11:** `trigger_state` table (migration v5). `replayMissedCronIfEnabled` respects BOTH global `replay_missed_cron` setting AND per-workflow `replay_missed` flag (migration v7). Toggle visible in each workflow card. |
-| 9 | Role-based UI (Viewer vs Editor/Admin) | §11.3 | **✅ Shipped 2026-04-11:** Settings page (save AI/prefs/license all disabled + read-only banner); API Access (regen + create key disabled + banner); AI Assistant (send/create blocked). Previously: Builder, Variables, Logs, Team, Catalog. |
-| 11 | Settings — remainder after backup ZIP | §14.1 | Same as Phase 1 row — now fully shipped. |
-| 12 | Online license validation (full product story) | §20.9 | Partial: **last verified** timestamp on successful online check + Settings/Team display of seats / valid-until. **Hosted license API + full §20.9.6** out of repo. |
+| 1 | Visual graph canvas builder (pan/zoom, edges, engine follows graph) | §3.3 | **Still open:** list-order edges + topological engine exist. Free-form canvas / drag-to-connect UI **not started** — V2 feature. |
+| 4 | AI conversation / multi-turn polish | §10.3 | **✅ Shipped 2026-04-11:** Chat bubble thread renders `conversation` signal; typing indicator; "Clear chat"; "Refine last draft" updates same workflow; follow-up placeholder; suggestions hidden after first turn. |
+| 5 | Multiple API keys + scopes | §12.1, §12.2 | **✅ Shipped 2026-04-11:** Scoped keys + scope checkboxes + one-time token display. `last_used_at` tracked in `api-server.ts` and shown in API Access table (DB migration v8). |
+| 8 | Trigger state persistence + missed-trigger replay | §16.2 | **✅ Shipped 2026-04-11:** `trigger_state` table (migration v5). Per-workflow `replay_missed` toggle in card (migration v7). Engine respects both global setting and per-workflow flag. |
+| 9 | Role-based UI (Viewer vs Editor/Admin) | §11.3 | **✅ Shipped 2026-04-11:** Viewer gate on Settings, API Access, AI Assistant (+ previously: Builder, Variables, Logs, Team, Catalog). Read-only banners on Settings and API Access. |
+| 11 | Settings — remainder after backup ZIP | §14.1 | ✅ Same as Phase 1 row — fully shipped. |
+| 12 | Online license validation (full product story) | §20.9 | **Still open (partial):** `last verified` timestamp + Settings display of seats / valid-until. Hosted license API + full §20.9.6 out of repo. |
 
-### Entitlement / commercial (§20.8 still open)
+### Entitlement / commercial (§20.8 — partial)
 
-| Task | PLAN § |
-|------|--------|
-| Online validation — complete policy, UX, grace, revocation story | §20.9 |
-| Per-seat **enforcement** (active seats / activations) | §20.8, §22 Phase 4 |
-| ✅ `*tfProIf` / global license signal directive | §20.8 · **directive wired 2026-04-11** — `TfProIfDirective` now supports `else` template; used in `analytics-page` and `ai-assistant-page` to show Pro gate to free users. |
-| ✅ Audit log when org key saved / cleared | §20.8 · `entitlement.saved` / `entitlement.cleared` |
-| Settings: "Connected to license service / last verified …" copy | §20.7 future note · **partially addressed** via last-verified + valid-until lines |
+| Task | PLAN § | Status |
+|------|--------|--------|
+| Online validation — complete policy, UX, grace, revocation story | §20.9 | Open — requires hosted license API |
+| Per-seat **enforcement** (active seats / activations) | §20.8, §22 Phase 4 | Open — requires hosted license API |
+| ✅ `*tfProIf` / global license signal directive | §20.8 | **Done 2026-04-11** — `TfProIfDirective` supports `else` template; wired in analytics + AI assistant pages. |
+| ✅ Audit log when org key saved / cleared / verified online | §20.8, §13.1 | **Done 2026-04-11** — `entitlement.saved`, `entitlement.cleared`, `entitlement.verified_online`, `entitlement.verification_failed`. |
+| Settings: "Connected to license service / last verified …" copy | §20.7 | **Partially addressed** — last-verified + valid-until lines shown in Settings. |
 
 ---
 
 ## Phase 4 — future platform (§22)
 
-(Unchanged — see prior PLAN-REMAINING / PLAN.md §22 for marketplace, cloud sync, license server, etc.)
+(Visual canvas §3.3, cloud sync, license server §20.9.6, per-seat enforcement, community marketplace, mobile app, plugin system — see PLAN.md §22 Phase 4.)
 
 ---
 
-## Other gaps called out in PLAN.md (worth tracking)
+## Other gaps — all resolved ✅
 
 | Area | PLAN § | Notes |
 |------|--------|--------|
-| AI heuristic parser breadth + confidence | §10.4 | **Expanded keywords + confidence score + UI hint** ✅; further tuning always possible. |
-| Audit log filtering (action type, date range, resource type) | §13.2 | **Date range + status + existing filters + empty state + toast export** ✅. |
-| §13.1 narrative vs code | §13.1 | Plan text predates `writeAuditLog`; treat "missing IPC coverage" as **verify + extend** if any mutation lacks audit. |
-| App launch trigger efficiency | §16.1 | **✅ Improved 2026-04-11:** `pollResources()` now uses targeted `tasklist /FI IMAGENAME eq <name>` on Windows (much lighter than full `si.processes()` list). `trigger_poll_interval_ms` is configurable (default 5 000 ms, min 1 000 ms). |
-| Loading states across pages | §21.3 | **✅ Shipped 2026-04-11:** `loading.run()` wired on variables, team, api-access, analytics, audit-logs, marketplace, and logs pages. All pages now show the shell progress bar on first load. |
+| AI heuristic parser breadth + confidence | §10.4 | **✅** Expanded keywords + confidence score + UI hint. |
+| Audit log filtering (action type, date range, resource type) | §13.2 | **✅** Date range + status + existing filters + empty state + toast export. |
+| §13.1 audit coverage | §13.1 | **✅ Complete 2026-04-11:** All mutating IPC handlers covered (`data:clearUserData`, `entitlement:refreshOnline` added). |
+| App launch trigger efficiency | §16.1 | **✅ Improved 2026-04-11:** `pollResources()` uses targeted `tasklist /FI IMAGENAME eq <name>` on Windows. `trigger_poll_interval_ms` configurable (default 5 000 ms, min 1 000 ms). |
+| Loading states across pages | §21.3 | **✅ Shipped 2026-04-11:** `loading.run()` wired on variables, team, api-access, analytics, audit-logs, marketplace, logs, and settings pages. |
 | Empty states component on list pages | §21.4 | **✅ Shipped 2026-04-11:** team page (no members / only-self states). Previously on: workflows, logs, variables, audit-logs, marketplace. |
-| Logs UX | §6.1 | **✅ Shipped 2026-04-11:** sticky "↑ N new logs — click to load" nudge banner appears when `onLogsNew` fires while `<main>` is scrolled > 120 px. Clicking scrolls to top and reloads. |
+| Logs UX — new-logs nudge | §6.1 | **✅ Shipped 2026-04-11:** Sticky "↑ N new logs — click to load" banner when scrolled > 120 px. |
+
+---
+
+## What remains open (summary)
+
+| Item | Why open |
+|------|----------|
+| §3.3 Visual graph canvas | V2 engineering effort — SVG/canvas drag-to-connect not started |
+| §20.9 Full online license validation | Requires hosted license API outside this repo |
+| §20.8 Per-seat enforcement | Requires hosted license API + seat DB |
 
 ---
 

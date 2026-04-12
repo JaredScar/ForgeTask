@@ -91,6 +91,7 @@ const SCOPE_OPTIONS: Array<{ id: string; label: string }> = [
               <tr>
                 <th class="p-2">Name</th>
                 <th class="p-2">Scopes</th>
+                <th class="p-2">Last used</th>
                 <th class="p-2"></th>
               </tr>
             </thead>
@@ -99,6 +100,7 @@ const SCOPE_OPTIONS: Array<{ id: string; label: string }> = [
                 <tr class="border-b border-tf-border/60">
                   <td class="p-2">{{ k.name }}</td>
                   <td class="p-2 font-mono text-[10px] text-neutral-500">{{ k.scopes.join(', ') || '—' }}</td>
+                  <td class="p-2 text-[10px] text-neutral-500 tabular-nums">{{ k.last_used_at ? formatDate(k.last_used_at) : 'Never' }}</td>
                   <td class="p-2 text-right">
                     <button type="button" class="text-red-400 hover:underline" (click)="revoke(k.id)">Revoke</button>
                   </td>
@@ -173,7 +175,7 @@ export class ApiAccessPageComponent implements OnInit {
   private rawKey = '';
   protected readonly revealed = signal(false);
   protected readonly visibleKey = signal('••••••••••••••••');
-  protected readonly extraKeys = signal<Array<{ id: string; name: string; scopes: string[] }>>([]);
+  protected readonly extraKeys = signal<Array<{ id: string; name: string; scopes: string[]; last_used_at: string | null }>>([]);
   protected newKeyName = '';
   protected readonly newKeyFullAccess = signal(true);
   protected readonly newKeyScopes = signal<Set<string>>(new Set());
@@ -201,9 +203,17 @@ export class ApiAccessPageComponent implements OnInit {
   private async reloadKeyList(): Promise<void> {
     try {
       const rows = await this.ipc.api.api.listKeys();
-      this.extraKeys.set(rows.filter((r) => !r.is_primary).map((r) => ({ id: r.id, name: r.name, scopes: r.scopes })));
+      this.extraKeys.set(rows.filter((r) => !r.is_primary).map((r) => ({ id: r.id, name: r.name, scopes: r.scopes, last_used_at: r.last_used_at ?? null })));
     } catch {
       this.extraKeys.set([]);
+    }
+  }
+
+  protected formatDate(iso: string): string {
+    try {
+      return new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+    } catch {
+      return iso;
     }
   }
 

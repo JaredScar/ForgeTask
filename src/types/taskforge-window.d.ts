@@ -201,7 +201,7 @@ export interface TaskForgeBridge {
   api: {
     getKey: () => Promise<string>;
     regenerateKey: () => Promise<string>;
-    listKeys: () => Promise<Array<{ id: string; name: string; scopes: string[]; created_at: string; is_primary: boolean }>>;
+    listKeys: () => Promise<Array<{ id: string; name: string; scopes: string[]; created_at: string; is_primary: boolean; last_used_at?: string | null }>>;
     createKey: (payload: { name: string; scopes: string[] }) => Promise<{ id: string; token: string }>;
     revokeKey: (id: string) => Promise<boolean>;
   };

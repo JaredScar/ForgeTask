@@ -111,6 +111,14 @@ function runMigrations(db: InstanceType<typeof BetterSqlite3>): void {
     }
     db.prepare(`INSERT INTO schema_migrations (version, applied_at) VALUES (7, ?)`).run(now);
   }
+  if (maxVer() < 8) {
+    /* §12.2 — track when each scoped API key was last used. */
+    const cols = db.prepare(`PRAGMA table_info(api_keys)`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === 'last_used_at')) {
+      db.exec(`ALTER TABLE api_keys ADD COLUMN last_used_at TEXT`);
+    }
+    db.prepare(`INSERT INTO schema_migrations (version, applied_at) VALUES (8, ?)`).run(now);
+  }
 }
 
 /** Keep primary REST token mirrored in api_keys for scoped API access. */

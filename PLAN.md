@@ -1200,12 +1200,12 @@ The flagship visual canvas builder and advanced integrations.
 | 1 | Visual graph canvas builder | §3.3 |
 | 2 | Real-time log step progress | §6.2 · ✅ Done (live panel + `logs:new` on run start) |
 | 3 | Workflow run history inline panel | §2.2 · ✅ Done (last run panel on workflow cards) |
-| 4 | AI conversation history | §10.3 · Partial (trim + multi-turn API; draft-edit UX still open) |
-| 5 | Multiple API keys with scopes | §12.1, §12.2 |
+| 4 | AI conversation history | §10.3 · ✅ Done (chat bubble thread, typing indicator, clear chat, follow-up placeholder, suggestions hidden after first turn; “Refine last draft” path updates existing workflow) |
+| 5 | Multiple API keys with scopes | §12.1, §12.2 · ✅ Done (scoped keys, scope checkboxes, one-time token display, last_used_at tracked + shown, DB migration v8) |
 | 6 | Remote marketplace registry | §9.2 · ✅ Done (`TASKFORGE_MARKETPLACE_URL` + cache) |
 | 7 | Marketplace "installed" state | §9.3 · ✅ Done (`source_template_id` + badge) |
-| 8 | Trigger state persistence + missed trigger replay | §16.2 |
-| 9 | Role-based UI (team permissions) | §11.3 |
+| 8 | Trigger state persistence + missed trigger replay | §16.2 · ✅ Done (trigger_state table, global + per-workflow replay_missed flag, card toggle, DB migrations v5 + v7) |
+| 9 | Role-based UI (team permissions) | §11.3 · ✅ Done (Viewer gate: Builder, Variables, Logs, Team, Catalog, Settings, API Access, AI Assistant) |
 | 10 | Keyboard shortcuts | §21.5 · ✅ Done |
 | 11 | Data export / import (ZIP) | §14.1 · ✅ Export + import (`data:importZip`); other settings rows still §14.1 |
 | 12 | Online license validation (client: cache, grace, IPC) | §20.9 · Partial (`license-remote.ts`, `hybrid` / `online_strict`, startup refresh) |
@@ -1300,4 +1300,4 @@ Customers receive an **organization license key** from checkout or your billing 
 
 *End of plan. Each section above is a self-contained unit of work; they can be assigned individually to implement in any order within a phase, as long as phase 1 prerequisites (real data foundation, IPC error handling) are completed first.*
 
-**Note (2026-04-05):** Large Phase 3 / Phase 4 items (visual canvas §3.3, multi-turn AI draft-edit UX §10.3, RBAC §11.3, remaining Settings §14.1 toggles, full online license server §20.9.6, etc.) remain **future** work where not marked ✅ — the checklist reflects the repo.
+**Note (2026-04-11):** Remaining Phase 3 open items: visual canvas §3.3 (free-form canvas / drag-to-connect UI not started), full online license server §20.9.6 (requires hosted API — out of repo). All other Phase 3 items are ✅ Done.

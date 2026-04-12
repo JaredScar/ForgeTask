@@ -382,6 +382,7 @@ export class IpcService {
             scopes: ['*'],
             created_at: new Date().toISOString(),
             is_primary: true,
+            last_used_at: null,
           },
         ],
         createKey: async () => ({ id: crypto.randomUUID(), token: LOCAL_DEV_REST_API_KEY_PLACEHOLDER }),

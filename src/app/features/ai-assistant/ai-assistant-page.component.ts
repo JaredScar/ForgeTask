@@ -55,65 +55,118 @@ function trimConversationForModel(turns: ChatTurn[]): ChatTurn[] {
       </div>
     </ng-template>
     <div *tfProIf="proGate" class="mx-auto max-w-2xl">
-      <div class="flex items-center gap-3">
-        <span class="text-3xl">🤖</span>
-        <div>
-          <h1 class="text-xl font-semibold">AI Workflow Assistant</h1>
-          <p class="text-sm text-tf-muted">Describe what you want to automate</p>
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <span class="text-3xl">🤖</span>
+          <div>
+            <h1 class="text-xl font-semibold">AI Workflow Assistant</h1>
+            <p class="text-sm text-tf-muted">Describe what you want to automate</p>
+          </div>
         </div>
-      </div>
-      <p class="mt-6 text-xs font-medium uppercase text-tf-muted">Try asking</p>
-      <div class="mt-2 flex flex-wrap gap-2">
-        @for (s of suggestions; track s) {
+        @if (conversation().length > 0) {
           <button
             type="button"
-            (click)="promptText = s"
-            class="rounded-full border border-tf-border bg-tf-card px-3 py-1.5 text-left text-xs hover:border-tf-green"
+            (click)="clearConversation()"
+            class="rounded-lg border border-tf-border px-3 py-1.5 text-xs text-tf-muted hover:border-neutral-500 hover:text-neutral-300"
           >
-            {{ s }}
+            Clear chat
           </button>
         }
       </div>
+
+      <!-- ── Conversation history thread ──────────────────────────── -->
+      @if (conversation().length > 0) {
+        <div class="mt-6 space-y-3">
+          @for (turn of conversation(); track $index) {
+            @if (turn.role === 'user') {
+              <div class="flex justify-end">
+                <div class="max-w-[80%] rounded-2xl rounded-tr-sm bg-tf-green/15 px-4 py-2.5 text-sm text-neutral-100 ring-1 ring-tf-green/20">
+                  {{ turn.content }}
+                </div>
+              </div>
+            } @else {
+              <div class="flex justify-start gap-2.5">
+                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-tf-card text-sm ring-1 ring-tf-border">🤖</div>
+                <div class="max-w-[80%] rounded-2xl rounded-tl-sm bg-tf-card px-4 py-2.5 text-sm text-neutral-300 ring-1 ring-tf-border">
+                  {{ turn.content }}
+                </div>
+              </div>
+            }
+          }
+          @if (busy()) {
+            <div class="flex justify-start gap-2.5">
+              <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-tf-card text-sm ring-1 ring-tf-border">🤖</div>
+              <div class="flex items-center gap-1.5 rounded-2xl rounded-tl-sm bg-tf-card px-4 py-3 ring-1 ring-tf-border">
+                <span class="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-tf-muted" style="animation-delay:0ms"></span>
+                <span class="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-tf-muted" style="animation-delay:150ms"></span>
+                <span class="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-tf-muted" style="animation-delay:300ms"></span>
+              </div>
+            </div>
+          }
+        </div>
+      } @else {
+        <!-- ── Suggestions (shown only when no history) ─────────── -->
+        <p class="mt-6 text-xs font-medium uppercase text-tf-muted">Try asking</p>
+        <div class="mt-2 flex flex-wrap gap-2">
+          @for (s of suggestions; track s) {
+            <button
+              type="button"
+              (click)="promptText = s"
+              class="rounded-full border border-tf-border bg-tf-card px-3 py-1.5 text-left text-xs hover:border-tf-green"
+            >
+              {{ s }}
+            </button>
+          }
+        </div>
+      }
+
       @if (draftWorkflowId()) {
         <label class="mt-4 flex cursor-pointer items-center gap-2 text-sm text-neutral-300">
           <input type="checkbox" [(ngModel)]="refineLastDraft" />
           Refine last draft (update the same workflow in Builder instead of creating a new one)
         </label>
       }
-      <div class="mt-8 flex gap-2 rounded-xl border border-tf-border bg-tf-card p-2">
+
+      <!-- ── Prompt input ─────────────────────────────────────────── -->
+      <div class="mt-4 flex gap-2 rounded-xl border border-tf-border bg-tf-card p-2" [class.mt-8]="conversation().length === 0">
         <input
           [(ngModel)]="promptText"
           class="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none"
-          placeholder="Describe what you want to automate…"
+          [placeholder]="conversation().length > 0 ? 'Follow up or refine…' : 'Describe what you want to automate…'"
           (keyup.enter)="send()"
         />
         <button
           type="button"
           (click)="send()"
-          [disabled]="busy()"
+          [disabled]="busy() || isViewer()"
           class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-tf-green text-black disabled:opacity-50"
+          title="{{ isViewer() ? 'Viewers cannot create workflows' : 'Send' }}"
         >
-          ➤
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 12V2M2 7l5-5 5 5"/>
+          </svg>
         </button>
       </div>
+
       @if (streamPreview()) {
-        <div class="mt-6 rounded-xl border border-tf-border bg-tf-bg/80 p-3">
-          <p class="text-[10px] font-medium uppercase text-tf-muted">Model output (streaming)</p>
+        <div class="mt-4 rounded-xl border border-tf-border bg-tf-bg/80 p-3">
+          <p class="text-[10px] font-medium uppercase text-tf-muted">Streaming…</p>
           <pre class="mt-2 max-h-40 overflow-auto font-mono text-[11px] text-neutral-400">{{ streamPreview() }}</pre>
         </div>
       }
+
       @if (preview(); as p) {
-        <div class="mt-6 rounded-xl border border-tf-border bg-tf-card p-4">
-          <p class="text-xs font-medium uppercase text-tf-muted">Draft preview</p>
-          @if (p.heuristicHint) {
-            <p class="mt-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/95">{{ p.heuristicHint }}</p>
-          }
-          <h2 class="mt-2 text-lg font-semibold text-neutral-100">{{ p.name }}</h2>
-          <div class="mt-3 flex flex-wrap gap-2">
+        <div class="mt-4 rounded-xl border border-tf-green/25 bg-tf-green/5 p-4">
+          <div class="flex items-center justify-between gap-2">
+            <p class="text-xs font-medium uppercase text-tf-green/70">Draft ready</p>
+            @if (p.heuristicHint) {
+              <span class="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200/90">{{ p.heuristicHint }}</span>
+            }
+          </div>
+          <h2 class="mt-2 text-base font-semibold text-neutral-100">{{ p.name }}</h2>
+          <div class="mt-2 flex flex-wrap gap-1.5">
             @for (n of p.nodes; track $index) {
-              <span
-                class="inline-flex items-center gap-1 rounded-full border border-tf-border bg-tf-bg px-2.5 py-1 text-xs text-neutral-300"
-              >
+              <span class="inline-flex items-center gap-1 rounded-full border border-tf-border bg-tf-bg px-2.5 py-1 text-xs text-neutral-300">
                 <span class="text-tf-muted">{{ n.node_type }}</span>
                 <span class="text-tf-green">{{ n.kind }}</span>
               </span>
@@ -123,18 +176,19 @@ function trimConversationForModel(turns: ChatTurn[]): ChatTurn[] {
             @if (draftWorkflowId(); as wid) {
               <a
                 [routerLink]="['/builder', wid]"
-                class="rounded-lg bg-tf-green px-4 py-2 text-sm font-medium text-black hover:opacity-90"
+                class="rounded-lg bg-tf-green px-4 py-2 text-sm font-semibold text-black hover:opacity-90"
               >
-                Review in Builder
+                Open in Builder
               </a>
             }
           </div>
         </div>
-        <details class="mt-4 rounded-lg border border-tf-border bg-tf-bg/50">
+        <details class="mt-3 rounded-lg border border-tf-border bg-tf-bg/50">
           <summary class="cursor-pointer px-3 py-2 text-xs font-medium text-tf-muted">Developer view (JSON)</summary>
           <pre class="max-h-48 overflow-auto p-3 font-mono text-[11px] text-neutral-400">{{ p.rawJson }}</pre>
         </details>
       }
+
       @if (errorText()) {
         <p class="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{{ errorText() }}</p>
       }
@@ -173,6 +227,15 @@ export class AiAssistantPageComponent implements OnInit {
   protected readonly conversation = signal<ChatTurn[]>([]);
   /** When set and a draft exists, `workflows.update` replaces nodes on that workflow (§10.3). */
   protected refineLastDraft = false;
+
+  clearConversation(): void {
+    this.conversation.set([]);
+    this.preview.set(null);
+    this.draftWorkflowId.set(null);
+    this.errorText.set('');
+    this.streamPreview.set('');
+    this.refineLastDraft = false;
+  }
 
   async send(): Promise<void> {
     if (this.isViewer()) { this.toast.warning('Viewers cannot create workflows via AI.'); return; }
