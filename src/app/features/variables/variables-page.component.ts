@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
+import { LoadingService } from '../../core/services/loading.service';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
 
 type VarRow = Record<string, unknown> & {
@@ -428,6 +429,7 @@ export class VariablesPageComponent implements OnInit {
   private readonly ipc = inject(IpcService);
   private readonly toast = inject(ToastService);
   private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly loading = inject(LoadingService);
 
   protected readonly nameMax = NAME_MAX;
   protected readonly descMax = DESC_MAX;
@@ -459,7 +461,7 @@ export class VariablesPageComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
-    await this.reload();
+    await this.loading.run(() => this.reload());
   }
 
   private async reload(): Promise<void> {

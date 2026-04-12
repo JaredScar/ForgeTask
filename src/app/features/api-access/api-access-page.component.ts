@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { IpcService } from '../../core/services/ipc.service';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
 import { ToastService } from '../../core/services/toast.service';
+import { LoadingService } from '../../core/services/loading.service';
 import { LOCAL_DEV_REST_API_KEY_PLACEHOLDER } from '../../core/local-dev-keys';
 
 const SCOPE_OPTIONS: Array<{ id: string; label: string }> = [
@@ -158,6 +159,7 @@ export class ApiAccessPageComponent implements OnInit {
   protected readonly ipc = inject(IpcService);
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
+  private readonly loading = inject(LoadingService);
   protected readonly scopeOptions = SCOPE_OPTIONS;
   private rawKey = '';
   protected readonly revealed = signal(false);
@@ -169,10 +171,12 @@ export class ApiAccessPageComponent implements OnInit {
   protected readonly lastCreatedToken = signal('');
 
   async ngOnInit(): Promise<void> {
-    this.rawKey = await this.ipc.api.api.getKey();
-    this.visibleKey.set('••••••••••••••••');
-    this.revealed.set(false);
-    await this.reloadKeyList();
+    await this.loading.run(async () => {
+      this.rawKey = await this.ipc.api.api.getKey();
+      this.visibleKey.set('••••••••••••••••');
+      this.revealed.set(false);
+      await this.reloadKeyList();
+    });
   }
 
   private async reloadKeyList(): Promise<void> {

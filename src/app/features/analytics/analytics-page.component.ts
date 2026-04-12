@@ -11,9 +11,12 @@ import {
 } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Chart, registerables } from 'chart.js';
 import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
+import { LoadingService } from '../../core/services/loading.service';
+import { TfProIfDirective } from '../../core/directives/tf-pro-if.directive';
 
 Chart.register(...registerables);
 
@@ -35,9 +38,19 @@ type Summary = {
 @Component({
   selector: 'app-analytics-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgClass, FormsModule],
+  imports: [NgClass, FormsModule, RouterLink, TfProIfDirective],
   template: `
-    <div>
+    <ng-template #proGate>
+      <div class="flex flex-col items-center gap-4 py-16 text-center">
+        <span class="text-4xl">📊</span>
+        <h2 class="text-lg font-semibold">Analytics is a Pro feature</h2>
+        <p class="max-w-sm text-sm text-tf-muted">Track workflow run rates, success percentages, and duration trends over time.</p>
+        <a routerLink="/settings" [queryParams]="{ unlock: '1' }" class="rounded-xl bg-tf-green px-5 py-2.5 text-sm font-semibold text-black hover:opacity-90">
+          Unlock Pro
+        </a>
+      </div>
+    </ng-template>
+    <div *tfProIf="proGate">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-xl font-semibold">Analytics Dashboard</h1>
@@ -118,6 +131,7 @@ type Summary = {
 export class AnalyticsPageComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly ipc = inject(IpcService);
   private readonly toast = inject(ToastService);
+  private readonly loading = inject(LoadingService);
   @ViewChild('barChart') private barRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('lineChart') private lineRef?: ElementRef<HTMLCanvasElement>;
 
@@ -146,7 +160,7 @@ export class AnalyticsPageComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   ngOnInit(): void {
-    void this.reloadData();
+    void this.loading.run(() => this.reloadData());
   }
 
   ngAfterViewInit(): void {

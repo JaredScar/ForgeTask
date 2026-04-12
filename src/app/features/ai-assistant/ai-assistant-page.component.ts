@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
 import { isEntitlementRequiredError } from '../../core/utils/entitlement-error';
+import { TfProIfDirective } from '../../core/directives/tf-pro-if.directive';
 
 const SUGGESTIONS = [
   'Open Spotify when I plug in headphones',
@@ -40,10 +41,20 @@ function trimConversationForModel(turns: ChatTurn[]): ChatTurn[] {
 
 @Component({
   selector: 'app-ai-assistant-page',
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, TfProIfDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="mx-auto max-w-2xl">
+    <ng-template #proGate>
+      <div class="flex flex-col items-center gap-4 py-16 text-center">
+        <span class="text-4xl">✨</span>
+        <h2 class="text-lg font-semibold">AI Assistant is a Pro feature</h2>
+        <p class="max-w-sm text-sm text-tf-muted">Describe what you want to automate in plain English and let AI build the workflow for you.</p>
+        <a routerLink="/settings" [queryParams]="{ unlock: '1' }" class="rounded-xl bg-tf-green px-5 py-2.5 text-sm font-semibold text-black hover:opacity-90">
+          Unlock Pro
+        </a>
+      </div>
+    </ng-template>
+    <div *tfProIf="proGate" class="mx-auto max-w-2xl">
       <div class="flex items-center gap-3">
         <span class="text-3xl">🤖</span>
         <div>

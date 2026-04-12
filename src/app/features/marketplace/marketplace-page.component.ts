@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
+import { LoadingService } from '../../core/services/loading.service';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
 
 type MarketplaceItem = {
@@ -85,11 +86,12 @@ export class MarketplacePageComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
   private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly loading = inject(LoadingService);
   protected readonly items = signal<MarketplaceItem[]>([]);
   protected readonly q = signal('');
 
   async ngOnInit(): Promise<void> {
-    await this.reload();
+    await this.loading.run(() => this.reload());
   }
 
   private async reload(): Promise<void> {

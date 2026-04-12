@@ -3,6 +3,8 @@ import { FormsModule } from '@angular/forms';
 import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
+import { LoadingService } from '../../core/services/loading.service';
+import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
 
 type MemberRow = Record<string, unknown> & {
   id: string;
@@ -16,7 +18,7 @@ type MemberRow = Record<string, unknown> & {
 
 @Component({
   selector: 'app-team-page',
-  imports: [FormsModule],
+  imports: [FormsModule, EmptyStateComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div>
@@ -39,32 +41,45 @@ type MemberRow = Record<string, unknown> & {
         }
       </div>
       <div class="mt-6 space-y-3">
-        @for (m of members(); track m.id) {
-          <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-tf-border bg-tf-card p-4">
-            <div class="flex items-center gap-3">
-              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-700 text-sm font-medium">
-                {{ initials(m.display_name) }}
+        @if (members().length === 0) {
+          <app-empty-state
+            icon="👥"
+            title="No team members yet"
+            description="Invite colleagues to collaborate on automations. Members are stored locally on this device."
+          />
+        } @else {
+          @for (m of members(); track m.id) {
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-tf-border bg-tf-card p-4">
+              <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-tf-green/20 text-sm font-semibold text-tf-green">
+                  {{ initials(m.display_name) }}
+                </div>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-neutral-100">{{ m.display_name }}</span>
+                    @if (m.is_self) {
+                      <span class="rounded bg-tf-green/15 px-1.5 py-0.5 text-[10px] font-medium text-tf-green">You</span>
+                    }
+                  </div>
+                  <div class="text-xs text-tf-muted">{{ m.email }}</div>
+                  <div class="mt-1 text-xs text-neutral-500">
+                    Last active: {{ m.last_active ?? '—' }} · {{ m.workflow_count }} workflow(s)
+                  </div>
+                </div>
               </div>
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="font-medium">{{ m.display_name }}</span>
-                  @if (m.is_self) {
-                    <span class="text-xs text-tf-green">👑</span>
-                  }
-                </div>
-                <div class="text-xs text-tf-muted">{{ m.email }}</div>
-                <div class="mt-1 text-xs text-neutral-500">
-                  Last active: {{ m.last_active ?? '—' }} · {{ m.workflow_count }} workflows
-                </div>
+              <div class="flex items-center gap-2">
+                <span class="rounded-full border border-tf-border px-3 py-1 text-xs text-neutral-300">{{ m.role }}</span>
+                @if (!m.is_self) {
+                  <button type="button" class="rounded-md border border-red-500/20 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/10" (click)="removeMember(m)">Remove</button>
+                }
               </div>
             </div>
-            <div class="flex items-center gap-2">
-              <span class="rounded-full bg-neutral-800 px-3 py-1 text-xs">{{ m.role }}</span>
-              @if (!m.is_self) {
-                <button type="button" class="text-xs text-red-400 hover:underline" (click)="removeMember(m)">Remove</button>
-              }
-            </div>
-          </div>
+          }
+          @if (members().length === 1 && members()[0].is_self) {
+            <p class="px-1 text-xs text-tf-muted">
+              Only you so far — use <strong class="text-neutral-400">+ Invite Member</strong> to add colleagues.
+            </p>
+          }
         }
       </div>
       @if (inviteOpen()) {
@@ -98,6 +113,7 @@ export class TeamPageComponent implements OnInit {
   private readonly ipc = inject(IpcService);
   private readonly toast = inject(ToastService);
   private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly loading = inject(LoadingService);
 
   protected readonly members = signal<MemberRow[]>([]);
   protected readonly inviteOpen = signal(false);
@@ -106,7 +122,7 @@ export class TeamPageComponent implements OnInit {
   protected inviteForm = { display_name: '', email: '', role: 'Editor' };
 
   async ngOnInit(): Promise<void> {
-    await this.reload();
+    await this.loading.run(() => this.reload());
     try {
       const st = await this.ipc.api.entitlement.getStatus();
       this.entitlementSeats.set(st.seats ?? null);

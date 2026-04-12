@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@ang
 import { FormsModule } from '@angular/forms';
 import { IpcService } from '../../core/services/ipc.service';
 import { ToastService } from '../../core/services/toast.service';
+import { LoadingService } from '../../core/services/loading.service';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
 
 interface AuditRow {
@@ -121,6 +122,7 @@ interface AuditRow {
 export class AuditLogsPageComponent implements OnInit {
   private readonly ipc = inject(IpcService);
   private readonly toast = inject(ToastService);
+  private readonly loading = inject(LoadingService);
   protected readonly rows = signal<AuditRow[]>([]);
   protected filterAction = '';
   protected filterUser = '';
@@ -130,7 +132,7 @@ export class AuditLogsPageComponent implements OnInit {
   protected filterQ = '';
 
   async ngOnInit(): Promise<void> {
-    await this.reload();
+    await this.loading.run(() => this.reload());
   }
 
   protected async applyFilters(): Promise<void> {

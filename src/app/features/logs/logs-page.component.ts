@@ -5,6 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { IpcService } from '../../core/services/ipc.service';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
 import { ToastService } from '../../core/services/toast.service';
+import { LoadingService } from '../../core/services/loading.service';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
 
 interface LogStepRow {
@@ -68,6 +69,18 @@ function upsertLiveStep(steps: LiveStepLine[], line: LiveStepLine): LiveStepLine
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div>
+      @if (pendingNewLogs() > 0) {
+        <button
+          type="button"
+          (click)="loadNewLogs()"
+          class="sticky top-0 z-10 mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-tf-green/30 bg-tf-green/10 py-2 text-xs font-medium text-tf-green hover:bg-tf-green/15"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 10V2M2 5.5l4-4 4 4"/>
+          </svg>
+          {{ pendingNewLogs() }} new log{{ pendingNewLogs() === 1 ? '' : 's' }} — click to load
+        </button>
+      }
       <div class="flex flex-wrap items-center justify-between gap-3">
         <h1 class="text-xl font-semibold">Execution logs</h1>
         <div class="flex flex-wrap gap-2">
@@ -314,6 +327,7 @@ export class LogsPageComponent implements OnInit {
   private readonly ipc = inject(IpcService);
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
+  private readonly loading = inject(LoadingService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
@@ -328,6 +342,7 @@ export class LogsPageComponent implements OnInit {
   protected readonly triggerFilter = signal('all');
   protected readonly expanded = signal(new Set<string>());
   protected readonly isViewer = signal(false);
+  protected readonly pendingNewLogs = signal(0);
 
   ngOnInit(): void {
     void this.loadViewerFlag();
@@ -338,8 +353,15 @@ export class LogsPageComponent implements OnInit {
       this.dateTo.set(pm.get('to') ?? '');
       this.triggerFilter.set(pm.get('trigger') ?? 'all');
     });
-    void this.reload();
-    this.disposeLogs = this.ipc.api.app.onLogsNew(() => void this.reload());
+    void this.loading.run(() => this.reload());
+    this.disposeLogs = this.ipc.api.app.onLogsNew(() => {
+      const main = document.querySelector('main');
+      if (main && main.scrollTop > 120) {
+        this.pendingNewLogs.update((n) => n + 1);
+      } else {
+        void this.reload();
+      }
+    });
     this.destroyRef.onDestroy(() => {
       this.disposeLogs?.();
       this.disposeStep?.();
@@ -406,6 +428,13 @@ export class LogsPageComponent implements OnInit {
 
   protected hasFinishedLiveSession(): boolean {
     return this.liveSessions().some((s) => s.phase === 'finished');
+  }
+
+  protected async loadNewLogs(): Promise<void> {
+    this.pendingNewLogs.set(0);
+    const main = document.querySelector('main');
+    main?.scrollTo({ top: 0, behavior: 'smooth' });
+    await this.reload();
   }
 
   protected dismissLiveSession(logId: string): void {
