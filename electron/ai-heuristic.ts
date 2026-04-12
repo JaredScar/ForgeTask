@@ -280,7 +280,10 @@ export function heuristicWorkflowFromPrompt(prompt: string): HeuristicDraft {
       sort_order: order++,
     });
     actionConf = 0.74;
-  } else if (lower.includes('http') || lower.includes('post ') || lower.includes('webhook') || lower.includes('api ') || lower.includes('request')) {
+  } else if (
+    (lower.includes('http') || lower.includes('post ') || lower.includes('webhook') || lower.includes('api ') || lower.includes('request')) &&
+    !lower.includes('download')
+  ) {
     nodes.push({
       node_type: 'action',
       kind: 'http_request',

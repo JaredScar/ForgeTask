@@ -295,7 +295,10 @@ export class IpcService {
         list: async () => [],
         get: async () => ({ log: null, steps: [] }),
         clear: async () => true,
-        export: async (_format?: 'csv' | 'json') => null,
+        export: async (format?: 'csv' | 'json') => {
+          void format;
+          return null;
+        },
         onStepProgress: () => () => undefined,
       },
       variables: { list: async () => [], create: async () => true, update: async () => true, delete: async () => true },
@@ -347,14 +350,17 @@ export class IpcService {
         remove: async () => true,
       },
       audit: {
-        list: async (_opts?: {
+        list: async (opts?: {
           action?: string;
           userId?: string;
           q?: string;
           from?: string;
           to?: string;
           status?: string;
-        }) => [],
+        }) => {
+          void opts;
+          return [];
+        },
         export: async () => null,
       },
       dialog: {

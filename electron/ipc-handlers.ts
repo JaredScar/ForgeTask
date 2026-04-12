@@ -3,7 +3,6 @@ import { ipcHandle } from './ipc-handle';
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import type { AutomationEngine } from './engine/automation-engine';
 import type { TriggerManager } from './engine/trigger-manager';
 import archiver from 'archiver';

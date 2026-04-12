@@ -1,5 +1,6 @@
 import {
   AfterViewInit,
+  ChangeDetectionStrategy,
   Component,
   ElementRef,
   OnDestroy,
@@ -12,6 +13,7 @@ import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Chart, registerables } from 'chart.js';
 import { IpcService } from '../../core/services/ipc.service';
+import { ToastService } from '../../core/services/toast.service';
 
 Chart.register(...registerables);
 
@@ -32,6 +34,7 @@ type Summary = {
 
 @Component({
   selector: 'app-analytics-page',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgClass, FormsModule],
   template: `
     <div>
@@ -114,6 +117,7 @@ type Summary = {
 })
 export class AnalyticsPageComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly ipc = inject(IpcService);
+  private readonly toast = inject(ToastService);
   @ViewChild('barChart') private barRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('lineChart') private lineRef?: ElementRef<HTMLCanvasElement>;
 
@@ -124,6 +128,7 @@ export class AnalyticsPageComponent implements OnInit, AfterViewInit, OnDestroy 
   protected readonly rangeDays = signal(7);
   private barChart?: Chart;
   private lineChart?: Chart;
+  private reloadSeq = 0;
 
   protected trendClass(t: TrendChip): Record<string, boolean> {
     if (t.trend === 'flat') return { 'text-tf-muted': true };
@@ -159,16 +164,23 @@ export class AnalyticsPageComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   private async reloadData(): Promise<void> {
+    const seq = ++this.reloadSeq;
     const d = this.rangeDays();
-    const s = (await this.ipc.api.analytics.getSummary({ rangeDays: d })) as Summary;
-    this.summary.set(s);
-    const r = await this.ipc.api.analytics.getRunsByWorkflow({ rangeDays: d });
-    this.runs.set(r);
-    const ts = await this.ipc.api.analytics.getRunsTimeSeries({ rangeDays: Math.max(30, d) });
-    this.timeSeries.set(ts as Array<{ day: string; count: number }>);
-    const sys = await this.ipc.api.analytics.getSystemHealth();
-    this.health.set(sys);
-    this.updateCharts();
+    try {
+      const s = (await this.ipc.api.analytics.getSummary({ rangeDays: d })) as Summary;
+      const r = await this.ipc.api.analytics.getRunsByWorkflow({ rangeDays: d });
+      const ts = await this.ipc.api.analytics.getRunsTimeSeries({ rangeDays: Math.max(30, d) });
+      const sys = await this.ipc.api.analytics.getSystemHealth();
+      if (seq !== this.reloadSeq) return;
+      this.summary.set(s);
+      this.runs.set(r);
+      this.timeSeries.set(ts as Array<{ day: string; count: number }>);
+      this.health.set(sys);
+      this.updateCharts();
+    } catch {
+      if (seq !== this.reloadSeq) return;
+      this.toast.error('Could not load analytics data.');
+    }
   }
 
   private ensureCharts(): void {

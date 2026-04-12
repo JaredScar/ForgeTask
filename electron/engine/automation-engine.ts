@@ -53,6 +53,10 @@ export class AutomationEngine {
     return 'allow';
   }
 
+  private workflowExists(workflowId: string): boolean {
+    return !!this.db.prepare(`SELECT 1 FROM workflows WHERE id = ?`).get(workflowId);
+  }
+
   private insertSkippedLog(workflowId: string, triggerKind?: string): string {
     const logId = randomUUID();
     const now = new Date().toISOString();
@@ -66,6 +70,9 @@ export class AutomationEngine {
   }
 
   async runWorkflow(workflowId: string, triggerKind?: string, internal = false): Promise<string> {
+    if (!this.workflowExists(workflowId)) {
+      throw new Error(`workflow not found: ${workflowId}`);
+    }
     const mode = this.getConcurrency(workflowId);
 
     if (!internal && mode === 'skip' && this.running.has(workflowId)) {

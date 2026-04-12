@@ -26,10 +26,91 @@ export interface WorkflowNodeDto {
   sort_order: number;
 }
 
+export interface WorkflowEdgeDto {
+  id: string;
+  workflow_id: string;
+  source_node_id: string;
+  target_node_id: string;
+}
+
+export interface ExecutionLogDto {
+  id: string;
+  workflow_id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  trigger_kind: string | null;
+  message: string | null;
+  error: string | null;
+}
+
+export interface LogStepDto {
+  id?: string;
+  log_id?: string;
+  step_type?: string;
+  step_kind: string;
+  status: string;
+  message: string | null;
+  error: string | null;
+  output?: string | null;
+  duration_ms?: number | null;
+}
+
+export interface StepProgressDto {
+  logId: string;
+  workflowId: string;
+  stepIndex: number;
+  stepType: string;
+  stepKind: string;
+  status: string;
+  message: string | null;
+  error: string | null;
+}
+
+export interface VariableDto {
+  id: string;
+  name: string;
+  type: string;
+  value: string;
+  is_secret: number;
+  scope: string;
+  description?: string;
+}
+
+export interface VariableMutationPayload {
+  id?: string;
+  name: string;
+  type: string;
+  value: string;
+  is_secret?: boolean | number;
+  scope?: string;
+  description?: string;
+}
+
+export interface TeamMemberDto {
+  id: string;
+  email: string;
+  display_name: string;
+  role: string;
+  last_active: string | null;
+  workflow_count: number;
+  is_self: number;
+}
+
+export interface AuditLogDto {
+  id: string;
+  user_id: string;
+  action: string;
+  resource: string;
+  ip: string;
+  status: string;
+  created_at: string;
+}
+
 export interface TaskForgeBridge {
   workflows: {
     list: () => Promise<WorkflowDto[]>;
-    get: (id: string) => Promise<{ workflow: WorkflowDto; nodes: WorkflowNodeDto[]; edges: unknown[] } | null>;
+    get: (id: string) => Promise<{ workflow: WorkflowDto; nodes: WorkflowNodeDto[]; edges: WorkflowEdgeDto[] } | null>;
     create: (p: { name: string; description?: string }) => Promise<string>;
     update: (p: Record<string, unknown>) => Promise<boolean>;
     delete: (id: string) => Promise<boolean>;
@@ -47,16 +128,16 @@ export interface TaskForgeBridge {
     usageByKind: (nodeType: 'trigger' | 'action') => Promise<Array<{ kind: string; count: number }>>;
   };
   logs: {
-    list: (opts?: { limit?: number; workflowId?: string }) => Promise<unknown[]>;
-    get: (id: string) => Promise<{ log: unknown; steps: unknown[] }>;
+    list: (opts?: { limit?: number; workflowId?: string }) => Promise<ExecutionLogDto[]>;
+    get: (id: string) => Promise<{ log: ExecutionLogDto | null; steps: LogStepDto[] }>;
     clear: () => Promise<boolean>;
     export: (format?: 'csv' | 'json') => Promise<string | null>;
-    onStepProgress: (cb: (step: Record<string, unknown>) => void) => () => void;
+    onStepProgress: (cb: (step: StepProgressDto) => void) => () => void;
   };
   variables: {
-    list: () => Promise<unknown[]>;
-    create: (v: Record<string, unknown>) => Promise<boolean>;
-    update: (v: Record<string, unknown>) => Promise<boolean>;
+    list: () => Promise<VariableDto[]>;
+    create: (v: VariableMutationPayload) => Promise<boolean>;
+    update: (v: VariableMutationPayload & { id: string }) => Promise<boolean>;
     delete: (id: string) => Promise<boolean>;
   };
   analytics: {
@@ -100,7 +181,7 @@ export interface TaskForgeBridge {
     resetPreferences: () => Promise<boolean>;
   };
   team: {
-    list: () => Promise<unknown[]>;
+    list: () => Promise<TeamMemberDto[]>;
     invite: (payload: { email: string; display_name: string; role: string }) => Promise<string>;
     remove: (id: string) => Promise<boolean>;
   };
@@ -112,7 +193,7 @@ export interface TaskForgeBridge {
       from?: string;
       to?: string;
       status?: string;
-    }) => Promise<unknown[]>;
+    }) => Promise<AuditLogDto[]>;
     export: () => Promise<string | null>;
   };
   api: {

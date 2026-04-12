@@ -15,11 +15,27 @@ const SCOPE_WORKFLOWS_WRITE = 'workflows:write';
 const SCOPE_WORKFLOWS_RUN = 'workflows:run';
 const SCOPE_LOGS_READ = 'logs:read';
 const SCOPE_VARIABLES_READ = 'variables:read';
+const VALID_SCOPES = new Set([
+  SCOPE_ALL,
+  SCOPE_WORKFLOWS_READ,
+  SCOPE_WORKFLOWS_WRITE,
+  SCOPE_WORKFLOWS_RUN,
+  SCOPE_LOGS_READ,
+  SCOPE_VARIABLES_READ,
+]);
 
-function parseScopesJson(raw: string): string[] {
+export function parseScopesJson(raw: string): string[] {
   try {
     const j = JSON.parse(raw) as unknown;
-    return Array.isArray(j) ? j.filter((x): x is string => typeof x === 'string') : [];
+    if (!Array.isArray(j)) return [];
+    const out: string[] = [];
+    for (const v of j) {
+      if (typeof v !== 'string') continue;
+      const scope = v.trim();
+      if (!VALID_SCOPES.has(scope) || out.includes(scope)) continue;
+      out.push(scope);
+    }
+    return out;
   } catch {
     return [];
   }
@@ -38,7 +54,22 @@ function resolveBearerAuth(db: Database.Database, bearer: string): string[] | nu
   const row = db.prepare(`SELECT scopes FROM api_keys WHERE token = ?`).get(bearer) as { scopes: string } | undefined;
   if (!row) return null;
   const scopes = parseScopesJson(row.scopes);
-  return scopes.length ? scopes : [SCOPE_ALL];
+  return scopes.length ? scopes : null;
+}
+
+function workflowExists(db: Database.Database, workflowId: string): boolean {
+  return !!db.prepare(`SELECT 1 FROM workflows WHERE id = ?`).get(workflowId);
+}
+
+export function toErrorPayload(err: unknown): { status: number; error: string } {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/workflow not found/i.test(message) || /FOREIGN KEY constraint failed/i.test(message)) {
+    return { status: 404, error: 'workflow not found' };
+  }
+  if (/SQLITE_CONSTRAINT/i.test(message)) {
+    return { status: 400, error: 'invalid request' };
+  }
+  return { status: 500, error: 'internal server error' };
 }
 
 export function startApiServer(
@@ -48,8 +79,32 @@ export function startApiServer(
   port = 38474
 ): { stop: () => void } {
   const app = express();
-  app.use(cors());
+  app.use(
+    cors({
+      origin: (origin, cb) => {
+        if (!origin) {
+          cb(null, true);
+          return;
+        }
+        try {
+          const u = new URL(origin);
+          const allowed = u.hostname === '127.0.0.1' || u.hostname === 'localhost';
+          cb(null, allowed);
+        } catch {
+          cb(null, false);
+        }
+      },
+    })
+  );
   app.use(express.json({ limit: '1mb' }));
+
+  const asyncRoute = (
+    handler: (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<void>
+  ) => {
+    return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      void Promise.resolve(handler(req, res, next)).catch(next);
+    };
+  };
 
   app.use((req, res, next) => {
     const auth = req.headers.authorization ?? '';
@@ -147,20 +202,43 @@ export function startApiServer(
     res.json({ variables: rows });
   });
 
-  app.post('/v1/workflows/run', need(SCOPE_WORKFLOWS_RUN), async (req, res) => {
-    const workflowId = (req.body as { workflow_id?: string })?.workflow_id;
-    if (!workflowId) {
-      res.status(400).json({ error: 'workflow_id required' });
-      return;
-    }
-    const id = randomUUID();
-    const now = new Date().toISOString();
-    db.prepare(
-      `INSERT INTO audit_logs (id, user_id, action, resource, ip, status, created_at) VALUES (?, ?, 'workflow.run', ?, ?, 'Success', ?)`
-    ).run(id, 'api', workflowId, req.ip ?? 'localhost', now);
-    await engine.runWorkflow(workflowId, 'api');
-    triggers.reloadFromDatabase();
-    res.json({ ok: true, workflow_id: workflowId });
+  app.post(
+    '/v1/workflows/run',
+    need(SCOPE_WORKFLOWS_RUN),
+    asyncRoute(async (req, res) => {
+      const workflowId = String((req.body as { workflow_id?: string })?.workflow_id ?? '').trim();
+      if (!workflowId) {
+        res.status(400).json({ error: 'workflow_id required' });
+        return;
+      }
+      if (!workflowExists(db, workflowId)) {
+        res.status(404).json({ error: 'workflow not found' });
+        return;
+      }
+      const id = randomUUID();
+      const now = new Date().toISOString();
+      db.prepare(
+        `INSERT INTO audit_logs (id, user_id, action, resource, ip, status, created_at) VALUES (?, ?, 'workflow.run', ?, ?, 'Pending', ?)`
+      ).run(id, 'api', workflowId, req.ip ?? 'localhost', now);
+
+      try {
+        const logId = await engine.runWorkflow(workflowId, 'api');
+        triggers.reloadFromDatabase();
+        const status = logId ? 'Success' : 'Queued';
+        db.prepare(`UPDATE audit_logs SET status = ? WHERE id = ?`).run(status, id);
+        res.json({ ok: true, workflow_id: workflowId, queued: !logId, log_id: logId || null });
+      } catch (err) {
+        db.prepare(`UPDATE audit_logs SET status = ? WHERE id = ?`).run('Failure', id);
+        const payload = toErrorPayload(err);
+        res.status(payload.status).json({ error: payload.error });
+      }
+    })
+  );
+
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    void _next;
+    const payload = toErrorPayload(err);
+    res.status(payload.status).json({ error: payload.error });
   });
 
   const server = app.listen(port, '127.0.0.1', () => {

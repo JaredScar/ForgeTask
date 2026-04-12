@@ -1,6 +1,6 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Subscription, from, switchMap } from 'rxjs';
+import { from, merge, switchMap } from 'rxjs';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DragDropModule, CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
@@ -17,6 +17,7 @@ import { schemaForKind } from '../../shared/constants/node-schemas';
 
 @Component({
   selector: 'app-builder-page',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule, DragDropModule, RouterLink, NodePickerComponent, NodeConfigFormComponent],
   template: `
     @if (pickerOpen()) {
@@ -151,19 +152,19 @@ import { schemaForKind } from '../../shared/constants/node-schemas';
     }
   `,
 })
-export class BuilderPageComponent implements OnInit, OnDestroy {
+export class BuilderPageComponent implements OnInit {
   private readonly ipc = inject(IpcService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
   private readonly hotkeys = inject(HotkeysService);
-  private hotkeySubs: Subscription[] = [];
 
   constructor() {
     this.route.paramMap
       .pipe(
         switchMap((pm) => from(this.handleRouteParam(pm.get('id')))),
-        takeUntilDestroyed()
+        takeUntilDestroyed(this.destroyRef)
       )
       .subscribe();
   }
@@ -219,14 +220,12 @@ export class BuilderPageComponent implements OnInit, OnDestroy {
       }
     }
 
-    this.hotkeySubs = [
-      this.hotkeys.saveBuilder$.subscribe(() => void this.save()),
-      this.hotkeys.testRunBuilder$.subscribe(() => void this.testRun()),
-    ];
-  }
-
-  ngOnDestroy(): void {
-    for (const s of this.hotkeySubs) s.unsubscribe();
+    merge(
+      this.hotkeys.saveBuilder$.pipe(switchMap(async () => this.save())),
+      this.hotkeys.testRunBuilder$.pipe(switchMap(async () => this.testRun()))
+    )
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /** Runs on every `:id` change; the router reuses this component, so snapshot-only init misses updates. */

@@ -359,7 +359,6 @@ export class LogsPageComponent implements OnInit, OnDestroy {
         if (i < 0) {
           return [...sessions, { logId, workflowId, workflowName: wfName, steps: [liveLine], phase: 'running' }];
         }
-        const s = sessions[i]!;
         return sessions.map((sess, j) =>
           j === i
             ? {
@@ -388,7 +387,7 @@ export class LogsPageComponent implements OnInit, OnDestroy {
     try {
       const { unlocked } = await this.ipc.api.entitlement.getStatus();
       if (!unlocked) return;
-      const team = (await this.ipc.api.team.list()) as Array<{ is_self: number; role: string }>;
+      const team = await this.ipc.api.team.list();
       const self = team.find((m) => m.is_self === 1);
       this.isViewer.set(self?.role === 'Viewer');
     } catch {
@@ -505,18 +504,18 @@ export class LogsPageComponent implements OnInit, OnDestroy {
   }
 
   private async reload(): Promise<void> {
-    const logs = (await this.ipc.api.logs.list({ limit: 500 })) as Array<Record<string, unknown>>;
+    const logs = await this.ipc.api.logs.list({ limit: 500 });
     const wfMap = new Map((await this.ipc.api.workflows.list()).map((w) => [w.id, w.name]));
     const mapped: LogRow[] = logs.map((l) => ({
-      id: String(l['id']),
-      workflow_id: String(l['workflow_id']),
-      started_at: String(l['started_at'] ?? ''),
-      finished_at: (l['finished_at'] as string) ?? null,
-      status: String(l['status'] ?? ''),
-      message: (l['message'] as string) ?? null,
-      error: (l['error'] as string) ?? null,
-      trigger_kind: (l['trigger_kind'] as string) ?? null,
-      workflow_name: wfMap.get(String(l['workflow_id'])) ?? String(l['workflow_id']),
+      id: l.id,
+      workflow_id: l.workflow_id,
+      started_at: l.started_at,
+      finished_at: l.finished_at,
+      status: l.status,
+      message: l.message,
+      error: l.error,
+      trigger_kind: l.trigger_kind,
+      workflow_name: wfMap.get(l.workflow_id) ?? l.workflow_id,
     }));
     this.rows.set(mapped);
     this.hydrateLiveSessionsAfterReload();
@@ -544,7 +543,7 @@ export class LogsPageComponent implements OnInit, OnDestroy {
         mapped.push(upd);
       }
 
-      let next: LiveSession[] = [...mapped];
+      const next: LiveSession[] = [...mapped];
       for (const row of list) {
         if (row.status !== 'running') continue;
         if (next.some((s) => s.logId === row.id)) continue;

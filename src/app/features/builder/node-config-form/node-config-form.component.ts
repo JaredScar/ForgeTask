@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CronBuilderComponent } from '../cron-builder/cron-builder.component';
 import { schemaForKind, type SchemaField } from '../../../shared/constants/node-schemas';
@@ -7,6 +7,7 @@ import { ToastService } from '../../../core/services/toast.service';
 
 @Component({
   selector: 'app-node-config-form',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule, CronBuilderComponent],
   template: `
     @if (fields().length === 0) {
@@ -100,26 +101,27 @@ import { ToastService } from '../../../core/services/toast.service';
     }
   `,
 })
-export class NodeConfigFormComponent implements OnChanges {
+export class NodeConfigFormComponent {
   protected readonly ipc = inject(IpcService);
   private readonly toast = inject(ToastService);
 
-  @Input({ required: true }) kind = '';
+  readonly kind = input.required<string>();
   /** Parsed config object (mutable copy in parent via events). */
-  @Input() model: Record<string, unknown> = {};
-  @Output() readonly modelChange = new EventEmitter<Record<string, unknown>>();
+  readonly model = input<Record<string, unknown>>({});
+  readonly modelChange = output<Record<string, unknown>>();
 
   protected readonly fields = signal<SchemaField[]>([]);
   protected readonly varNames = signal<string[]>([]);
   protected readonly varListId = 'tf-var-suggest-' + Math.random().toString(36).slice(2, 9);
 
-  ngOnChanges(ch: SimpleChanges): void {
-    if (ch['kind']) {
-      this.fields.set(schemaForKind(this.kind) ?? []);
-    }
-    if (ch['kind'] && this.ipc.isElectron) {
-      void this.loadVarNames();
-    }
+  constructor() {
+    effect(() => {
+      const kind = this.kind();
+      this.fields.set(schemaForKind(kind) ?? []);
+      if (this.ipc.isElectron) {
+        void this.loadVarNames();
+      }
+    });
   }
 
   private async loadVarNames(): Promise<void> {
@@ -132,17 +134,17 @@ export class NodeConfigFormComponent implements OnChanges {
   }
 
   strVal(key: string): string {
-    const v = this.model[key];
+    const v = this.model()[key];
     return v == null ? '' : String(v);
   }
 
   numVal(key: string): number {
-    const v = this.model[key];
+    const v = this.model()[key];
     return typeof v === 'number' ? v : Number(v) || 0;
   }
 
   boolVal(key: string): boolean {
-    return !!this.model[key];
+    return !!this.model()[key];
   }
 
   setStr(key: string, v: string): void {
@@ -158,7 +160,7 @@ export class NodeConfigFormComponent implements OnChanges {
   }
 
   private patch(p: Record<string, unknown>): void {
-    const next = { ...this.model, ...p };
+    const next = { ...this.model(), ...p };
     this.modelChange.emit(next);
   }
 

@@ -81,7 +81,6 @@ export async function runDownloadFile(config: Record<string, unknown>): Promise<
   const ws = createWriteStream(dest);
   try {
     // Node fetch() body is a Web ReadableStream
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await pipeline(Readable.fromWeb(res.body as any), ws);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

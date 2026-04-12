@@ -137,25 +137,15 @@ export class AuditLogsPageComponent implements OnInit {
   }
 
   private async reload(): Promise<void> {
-    const list = (await this.ipc.api.audit.list({
+    const list = await this.ipc.api.audit.list({
       action: this.filterAction.trim() || undefined,
       userId: this.filterUser.trim() || undefined,
       status: this.filterStatus.trim() || undefined,
       from: this.filterFrom.trim() || undefined,
       to: this.filterTo.trim() || undefined,
       q: this.filterQ.trim() || undefined,
-    })) as Record<string, unknown>[];
-    this.rows.set(
-      list.map((x) => ({
-        id: String(x['id']),
-        user_id: String(x['user_id']),
-        action: String(x['action']),
-        resource: String(x['resource']),
-        ip: String(x['ip']),
-        status: String(x['status']),
-        created_at: String(x['created_at']),
-      }))
-    );
+    });
+    this.rows.set(list);
   }
 
   protected timeOnly(iso: string): string {

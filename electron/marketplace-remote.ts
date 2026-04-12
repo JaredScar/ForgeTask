@@ -57,10 +57,19 @@ function mergeById(local: MarketplaceTemplate[], remote: MarketplaceTemplate[]):
 export async function resolveMarketplaceCatalog(db: Database.Database): Promise<MarketplaceTemplate[]> {
   const url = process.env.TASKFORGE_MARKETPLACE_URL?.trim();
   if (url) {
+    let parsed: URL | null = null;
+    try {
+      parsed = new URL(url);
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || parsed.protocol !== 'https:') {
+      return MARKETPLACE_ITEMS;
+    }
     try {
       const ac = new AbortController();
       const t = setTimeout(() => ac.abort(), 5000);
-      const r = await fetch(url, { signal: ac.signal });
+      const r = await fetch(parsed.toString(), { signal: ac.signal });
       clearTimeout(t);
       if (r.ok) {
         const j = (await r.json()) as unknown;

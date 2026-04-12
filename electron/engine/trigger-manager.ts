@@ -232,7 +232,6 @@ export class TriggerManager {
           this.recordTriggerFire(t.workflow_id, t.node_id);
         }
       };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Electron event names vary by OS
       powerMonitor.on(ev as any, handler);
       this.powerCleanups.push(() => {
         powerMonitor.off(ev as any, handler);

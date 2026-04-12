@@ -8,6 +8,4 @@ export class HotkeysService {
   readonly saveBuilder$ = new Subject<void>();
   /** Ctrl+R while on builder */
   readonly testRunBuilder$ = new Subject<void>();
-  /** Ctrl+N — new workflow */
-  readonly newWorkflow$ = new Subject<void>();
 }

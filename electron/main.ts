@@ -173,7 +173,8 @@ function createTray(): void {
   tray.setContextMenu(menu);
   tray.on('click', () => {
     if (mainWindow) {
-      mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+      if (mainWindow.isVisible()) mainWindow.hide();
+      else mainWindow.show();
     } else {
       createWindow();
     }

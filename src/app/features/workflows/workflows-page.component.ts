@@ -393,15 +393,15 @@ export class WorkflowsPageComponent implements OnInit {
     }
     this.lastRunPanelId.set(workflowId);
     this.lastRunDetail.set(null);
-    const logs = (await this.ipc.api.logs.list({ limit: 50, workflowId })) as Array<Record<string, unknown>>;
+    const logs = await this.ipc.api.logs.list({ limit: 50, workflowId });
     const first = logs[0];
     if (!first) {
       this.lastRunDetail.set(null);
       return;
     }
-    const logId = String(first['id']);
+    const logId = first.id;
     const detail = await this.ipc.api.logs.get(logId);
-    const log = detail.log as Record<string, unknown> | null;
+    const log = detail.log;
     const steps = (detail.steps ?? []) as LogStepRow[];
     if (!log) {
       this.lastRunDetail.set(null);
@@ -409,10 +409,10 @@ export class WorkflowsPageComponent implements OnInit {
     }
     this.lastRunDetail.set({
       id: logId,
-      started_at: String(log['started_at'] ?? ''),
-      finished_at: (log['finished_at'] as string) ?? null,
-      status: String(log['status'] ?? ''),
-      message: (log['message'] as string) ?? null,
+      started_at: log.started_at,
+      finished_at: log.finished_at,
+      status: log.status,
+      message: log.message,
       steps,
     });
   }
