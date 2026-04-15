@@ -12,10 +12,10 @@ import { Router } from '@angular/router';
           src="taskforge.png"
           width="96"
           height="96"
-          alt="TaskForge"
+          alt="ForgeTask"
           class="mb-4 h-24 w-24 rounded-2xl object-contain shadow-lg shadow-black/30"
         />
-        <h1 class="text-2xl font-semibold tracking-tight">Welcome to TaskForge</h1>
+        <h1 class="text-2xl font-semibold tracking-tight">Welcome to ForgeTask</h1>
       </div>
       <p class="mt-2 text-sm text-tf-muted">
         A modern replacement for Windows Task Scheduler — build automations with triggers, conditions, and actions.
@@ -51,7 +51,7 @@ export class OnboardingPageComponent {
 
   private dismiss(): void {
     try {
-      localStorage.setItem('taskforge_onboarding_done', '1');
+    localStorage.setItem('forgetask_onboarding_done', '1');
     } catch {
       /* ignore */
     }

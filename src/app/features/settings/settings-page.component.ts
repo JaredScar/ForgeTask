@@ -34,7 +34,7 @@ import { LoadingService } from '../../core/services/loading.service';
         <h2 class="text-sm font-medium">Organization license key</h2>
         <p class="mt-1 text-xs text-tf-muted">
           Product entitlement (not your REST <code class="text-[11px] text-neutral-500">api_key</code>). Official builds can require online validation
-          (<code class="text-[11px] text-neutral-500">TASKFORGE_LICENSE_API_URL</code> + <code class="text-[11px] text-neutral-500">hybrid</code> /
+          (<code class="text-[11px] text-neutral-500">FORGETASK_LICENSE_API_URL</code> + <code class="text-[11px] text-neutral-500">hybrid</code> /
           <code class="text-[11px] text-neutral-500">online_strict</code>). Dev: signed
           <code class="text-[11px] text-neutral-500">tfent1…</code> via <code class="text-[11px] text-neutral-500">node scripts/generate-entitlement-key.mjs</code> or
           <code class="text-[11px] text-neutral-500">local-dev-pro-enterprise</code>.

@@ -26,13 +26,13 @@
   },
   "private": true,
   "build": {
-    "appId": "app.taskforge.desktop",
-    "productName": "TaskForge",
+    "appId": "app.forgetask.desktop",
+    "productName": "ForgeTask",
     "publish": [
       {
         "provider": "github",
         "owner": "JaredScar",
-        "repo": "TaskForge",
+        "repo": "ForgeTask",
         "releaseType": "release"
       }
     ],

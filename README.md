@@ -12,27 +12,27 @@
 
 </div>
 
-# TaskForge
+# ForgeTask
 
 Modern desktop automation for Windows — a **Task Scheduler–style** app with a visual workflow builder, triggers, actions, execution logs, and optional AI-assisted drafts.
 
 ## Screenshots
 
-TaskForge desktop app (v2.1.0).
+ForgeTask desktop app (v2.1.0).
 
 ### Core (Free tier)
 
 | Workflows | Triggers |
 |:---:|:---:|
-| ![TaskForge — Workflows empty state and sidebar](docs/screenshots/workflows.png) | ![TaskForge — Triggers, Basic and Advanced (Pro)](docs/screenshots/triggers.png) |
+| ![ForgeTask — Workflows empty state and sidebar](docs/screenshots/workflows.png) | ![ForgeTask — Triggers, Basic and Advanced (Pro)](docs/screenshots/triggers.png) |
 
 | Actions | Execution logs |
 |:---:|:---:|
-| ![TaskForge — Actions, Basic and Advanced (Pro)](docs/screenshots/actions.png) | ![TaskForge — Execution logs empty state](docs/screenshots/logs.png) |
+| ![ForgeTask — Actions, Basic and Advanced (Pro)](docs/screenshots/actions.png) | ![ForgeTask — Execution logs empty state](docs/screenshots/logs.png) |
 
 | Settings (organization license & preferences) |
 |:---:|
-| ![TaskForge — Settings, license and preferences](docs/screenshots/settings.png) |
+| ![ForgeTask — Settings, license and preferences](docs/screenshots/settings.png) |
 
 ### Pro features
 
