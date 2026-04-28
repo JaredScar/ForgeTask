@@ -12,6 +12,9 @@ export const DEV_ENTITLEMENT_BYPASS = 'local-dev-pro-enterprise';
 /** Current prefix; legacy prefix still accepted for older signed keys (see `legacy-paths.ts`). */
 const KEY_PREFIXES = new Set(['tfent1', 'adent1']);
 
+/** Maximum number of workflows allowed on the Free tier. */
+export const FREE_WORKFLOW_LIMIT = 5;
+
 export const PRO_TRIGGER_KINDS = new Set([
   'network_change',
   'file_change',
@@ -20,6 +23,11 @@ export const PRO_TRIGGER_KINDS = new Set([
   'idle_trigger',
   'memory_trigger',
   'device_trigger',
+  'webhook_trigger',
+  'process_exit',
+  'window_focus',
+  'display_change',
+  'clipboard_monitor',
 ]);
 export const PRO_ACTION_KINDS = new Set([
   'run_script',
@@ -29,6 +37,10 @@ export const PRO_ACTION_KINDS = new Set([
   'wake_on_lan',
   'tcp_port_check',
   'screenshot_save',
+  'delay_wait',
+  'send_email',
+  'slack_notification',
+  'set_variable',
 ]);
 
 function entitlementSecretCandidates(): readonly string[] {
@@ -119,8 +131,23 @@ export class EntitlementRequiredError extends Error {
   }
 }
 
+export class WorkflowLimitError extends Error {
+  readonly code = 'WORKFLOW_LIMIT_REACHED' as const;
+  constructor() {
+    super(`WORKFLOW_LIMIT_REACHED:${FREE_WORKFLOW_LIMIT}`);
+    this.name = 'WorkflowLimitError';
+  }
+}
+
 export function assertProEnterprise(db: Database.Database): void {
   if (!isProEnterpriseUnlocked(db)) throw new EntitlementRequiredError();
+}
+
+/** Throws WorkflowLimitError when a free user tries to exceed the 5-workflow cap. */
+export function assertFreeWorkflowLimit(db: Database.Database): void {
+  if (isProEnterpriseUnlocked(db)) return;
+  const { count } = db.prepare(`SELECT COUNT(*) as count FROM workflows`).get() as { count: number };
+  if (count >= FREE_WORKFLOW_LIMIT) throw new WorkflowLimitError();
 }
 
 /** True if any node uses a Pro trigger or Pro action kind. */

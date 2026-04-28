@@ -163,13 +163,13 @@ export class AutomationEngine {
           const maxRetries = Math.min(10, Math.max(0, Number(cfg['retryCount'] ?? 0)));
           const retryDelayMs = Math.min(60_000, Math.max(0, Number(cfg['retryDelayMs'] ?? 1000)));
 
-          let ar = await executeActionNode(node, vars, context);
+          let ar = await executeActionNode(node, vars, context, this.db);
           let attempts = 0;
           while (ar.status === 'failure' && attempts < maxRetries) {
             attempts++;
             this.insertStep(logId, workflowId, node, 'retrying', 0, `Retry ${attempts}/${maxRetries}`, ar.error, undefined);
             if (retryDelayMs > 0) await sleep(retryDelayMs);
-            ar = await executeActionNode(node, vars, context);
+            ar = await executeActionNode(node, vars, context, this.db);
           }
 
           this.insertStep(logId, workflowId, node, ar.status, ar.durationMs, ar.message, ar.error, ar.output);

@@ -119,6 +119,25 @@ function runMigrations(db: InstanceType<typeof BetterSqlite3>): void {
     }
     db.prepare(`INSERT INTO schema_migrations (version, applied_at) VALUES (8, ?)`).run(now);
   }
+  if (maxVer() < 9) {
+    /* §21 — workflow versioning history (Pro). */
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS workflow_versions (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        nodes TEXT NOT NULL DEFAULT '[]',
+        edges TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        label TEXT DEFAULT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_workflow_versions_wf ON workflow_versions(workflow_id);
+      CREATE INDEX IF NOT EXISTS idx_workflow_versions_num ON workflow_versions(workflow_id, version_number);
+    `);
+    db.prepare(`INSERT INTO schema_migrations (version, applied_at) VALUES (9, ?)`).run(now);
+  }
 }
 
 /** Keep primary REST token mirrored in api_keys for scoped API access. */
@@ -151,7 +170,7 @@ function ensureAppDefaults(db: InstanceType<typeof BetterSqlite3>): void {
   }
 
   const defaults: [string, string][] = [
-    ['log_retention_days', '30'],
+    ['log_retention_days', '7'],
     ['log_retention_forever', '0'],
     ['clear_logs_on_startup', '0'],
     ['engine_auto_start', '1'],

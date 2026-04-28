@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import AdmZip from 'adm-zip';
+import { isProEnterpriseUnlocked, FREE_WORKFLOW_LIMIT } from './entitlement';
 
 /** Keys never applied from an import file (secrets and local cache). */
 const SETTINGS_IMPORT_BLOCKLIST = new Set([
@@ -31,9 +32,18 @@ export function importDataFromZipBuffer(db: Database.Database, buffer: Buffer): 
     }
     const raw = entry.getData().toString('utf8');
     const data = JSON.parse(raw) as Record<string, unknown>;
-    const workflows = asRecordArray(data.workflows, 'workflows');
-    const workflowNodes = asRecordArray(data.workflow_nodes, 'workflow_nodes');
-    const workflowEdges = asRecordArray(data.workflow_edges, 'workflow_edges');
+    let workflows = asRecordArray(data.workflows, 'workflows');
+    const isPro = isProEnterpriseUnlocked(db);
+    if (!isPro && workflows.length > FREE_WORKFLOW_LIMIT) {
+      workflows = workflows.slice(0, FREE_WORKFLOW_LIMIT);
+    }
+    const allowedWorkflowIds = new Set(workflows.map((w) => String(w['id'])));
+    const workflowNodes = asRecordArray(data.workflow_nodes, 'workflow_nodes').filter(
+      (n) => allowedWorkflowIds.has(String(n['workflow_id']))
+    );
+    const workflowEdges = asRecordArray(data.workflow_edges, 'workflow_edges').filter(
+      (e) => allowedWorkflowIds.has(String(e['workflow_id']))
+    );
     const variables = asRecordArray(data.variables, 'variables');
     const settingsRows = Array.isArray(data.settings) ? (data.settings as { key?: string; value?: string }[]) : [];
 

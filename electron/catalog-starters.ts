@@ -26,6 +26,16 @@ export function defaultTriggerConfig(kind: string): Record<string, unknown> {
       return { intervalMinutes: 30, label: 'Every 30 minutes' };
     case 'power_event':
       return { event: 'resume', label: 'When system resumes' };
+    case 'webhook_trigger':
+      return { secret: '', label: 'Incoming webhook' };
+    case 'process_exit':
+      return { process: 'notepad.exe', label: 'When process exits' };
+    case 'window_focus':
+      return { windowTitle: '', label: 'Window focus' };
+    case 'display_change':
+      return { event: 'any', label: 'Display change' };
+    case 'clipboard_monitor':
+      return { filter: '', label: 'Clipboard change' };
     default:
       return { label: kind };
   }
@@ -69,6 +79,14 @@ export function defaultActionConfig(kind: string): Record<string, unknown> {
       return { path: '', content: '', append: false, label: 'Write text file' };
     case 'lock_workstation':
       return { label: 'Lock screen' };
+    case 'delay_wait':
+      return { delaySeconds: 5, label: 'Wait 5 seconds' };
+    case 'send_email':
+      return { smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', from: '', to: '', subject: 'TaskForge notification', body: '', label: 'Send email' };
+    case 'slack_notification':
+      return { webhookUrl: '', text: 'Workflow completed ✅', username: 'TaskForge', iconEmoji: ':robot_face:', label: 'Slack message' };
+    case 'set_variable':
+      return { variableName: '', variableValue: '', label: 'Set variable' };
     default:
       return { label: kind };
   }

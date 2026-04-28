@@ -131,6 +131,13 @@ contextBridge.exposeInMainWorld('taskForge', {
       ),
     clearUserData: () => inv<boolean>('data:clearUserData'),
   },
+  versions: {
+    list: (workflowId: string) => inv<Array<{ id: string; workflow_id: string; version_number: number; name: string; created_at: string; label: string | null }>>('versions:list', workflowId),
+    get: (versionId: string) => inv<Record<string, unknown> | null>('versions:get', versionId),
+    label: (payload: { id: string; label: string }) => inv<boolean>('versions:label', payload),
+    restore: (payload: { workflowId: string; versionId: string }) => inv<boolean>('versions:restore', payload),
+    delete: (versionId: string) => inv<boolean>('versions:delete', versionId),
+  },
   dialog: {
     pickExecutable: () => inv<string | null>('dialog:pickExecutable'),
   },

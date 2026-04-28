@@ -26,6 +26,7 @@ import {
 import { writeAuditLog } from './db/audit';
 import { defaultActionConfig, defaultConditionConfig, defaultTriggerConfig, stubTimeTriggerConfig } from './catalog-starters';
 import {
+  assertFreeWorkflowLimit,
   assertProEnterprise,
   decodeEntitlementPayload,
   EntitlementRequiredError,
@@ -35,6 +36,7 @@ import {
   PRO_TRIGGER_KINDS,
   readStoredEntitlementKey,
   validateProEnterpriseKey,
+  WorkflowLimitError,
   workflowNodesRequireProEntitlement,
 } from './entitlement';
 import {
@@ -206,6 +208,7 @@ export function registerIpcHandlers(
   });
 
   ipcHandle('workflows:create', (_e, payload: { name: string; description?: string }) => {
+    assertFreeWorkflowLimit(db);
     const id = randomUUID();
     const now = new Date().toISOString();
     const pr = (
@@ -283,6 +286,23 @@ export function registerIpcHandlers(
           insE.run(String(e['id'] ?? randomUUID()), payload.id, String(e['source_node_id']), String(e['target_node_id']));
         }
       }
+      if (Array.isArray(payload.nodes) && isProEnterpriseUnlocked(db)) {
+        const nextVer = ((db.prepare(`SELECT MAX(version_number) as v FROM workflow_versions WHERE workflow_id = ?`).get(payload.id) as { v: number | null }).v ?? 0) + 1;
+        const snapNodes = db.prepare(`SELECT * FROM workflow_nodes WHERE workflow_id = ? ORDER BY sort_order`).all(payload.id);
+        const snapEdges = db.prepare(`SELECT * FROM workflow_edges WHERE workflow_id = ?`).all(payload.id);
+        const snapWf = db.prepare(`SELECT name, description FROM workflows WHERE id = ?`).get(payload.id) as { name: string; description: string } | undefined;
+        db.prepare(
+          `INSERT INTO workflow_versions (id, workflow_id, version_number, name, description, nodes, edges, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(randomUUID(), payload.id, nextVer, snapWf?.name ?? '', snapWf?.description ?? '', JSON.stringify(snapNodes), JSON.stringify(snapEdges), now);
+        const maxVersions = 50;
+        const oldest = db.prepare(
+          `SELECT id FROM workflow_versions WHERE workflow_id = ? ORDER BY version_number DESC LIMIT -1 OFFSET ?`
+        ).all(payload.id, maxVersions) as { id: string }[];
+        if (oldest.length > 0) {
+          const ids = oldest.map((r) => r.id);
+          db.prepare(`DELETE FROM workflow_versions WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids);
+        }
+      }
       writeAuditLog(db, 'workflow.update', payload.id);
       triggers.reloadFromDatabase();
       return true;
@@ -329,6 +349,7 @@ export function registerIpcHandlers(
   });
 
   ipcHandle('workflows:duplicate', (_e, sourceId: string) => {
+    assertFreeWorkflowLimit(db);
     const wf = db.prepare(`SELECT * FROM workflows WHERE id = ?`).get(sourceId) as Record<string, unknown> | undefined;
     if (!wf) return '';
     const newId = randomUUID();
@@ -396,6 +417,7 @@ export function registerIpcHandlers(
   ipcHandle(
     'workflows:createFromStarter',
     (_e, payload: { mode: 'trigger' | 'action'; kind: string; displayTitle: string }) => {
+      assertFreeWorkflowLimit(db);
       const needsPro =
         (payload.mode === 'trigger' && PRO_TRIGGER_KINDS.has(payload.kind)) ||
         (payload.mode === 'action' && PRO_ACTION_KINDS.has(payload.kind));
@@ -1186,6 +1208,59 @@ export function registerIpcHandlers(
       memoryMb,
       version: '2.1.0',
     };
+  });
+
+  ipcHandle('versions:list', (_e, workflowId: string) => {
+    assertProEnterprise(db);
+    return db
+      .prepare(
+        `SELECT id, workflow_id, version_number, name, created_at, label FROM workflow_versions WHERE workflow_id = ? ORDER BY version_number DESC`
+      )
+      .all(workflowId);
+  });
+
+  ipcHandle('versions:get', (_e, versionId: string) => {
+    assertProEnterprise(db);
+    return db.prepare(`SELECT * FROM workflow_versions WHERE id = ?`).get(versionId) ?? null;
+  });
+
+  ipcHandle('versions:label', (_e, payload: { id: string; label: string }) => {
+    assertProEnterprise(db);
+    db.prepare(`UPDATE workflow_versions SET label = ? WHERE id = ?`).run(payload.label, payload.id);
+    return true;
+  });
+
+  ipcHandle('versions:restore', (_e, payload: { workflowId: string; versionId: string }) => {
+    assertProEnterprise(db);
+    const ver = db.prepare(`SELECT * FROM workflow_versions WHERE id = ? AND workflow_id = ?`).get(payload.versionId, payload.workflowId) as Record<string, unknown> | undefined;
+    if (!ver) return false;
+    const now = new Date().toISOString();
+    const nodes = JSON.parse(String(ver['nodes'] ?? '[]')) as Array<Record<string, unknown>>;
+    const edges = JSON.parse(String(ver['edges'] ?? '[]')) as Array<Record<string, unknown>>;
+    db.prepare(`UPDATE workflows SET name = ?, description = ?, updated_at = ? WHERE id = ?`).run(
+      ver['name'], ver['description'], now, payload.workflowId
+    );
+    db.prepare(`DELETE FROM workflow_edges WHERE workflow_id = ?`).run(payload.workflowId);
+    db.prepare(`DELETE FROM workflow_nodes WHERE workflow_id = ?`).run(payload.workflowId);
+    const ins = db.prepare(
+      `INSERT INTO workflow_nodes (id, workflow_id, node_type, kind, config, position_x, position_y, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    for (const n of nodes) {
+      ins.run(String(n['id'] ?? randomUUID()), payload.workflowId, String(n['node_type']), String(n['kind']), String(n['config'] ?? '{}'), Number(n['position_x'] ?? 0), Number(n['position_y'] ?? 0), Number(n['sort_order'] ?? 0));
+    }
+    const insE = db.prepare(`INSERT INTO workflow_edges (id, workflow_id, source_node_id, target_node_id) VALUES (?, ?, ?, ?)`);
+    for (const e of edges) {
+      insE.run(String(e['id'] ?? randomUUID()), payload.workflowId, String(e['source_node_id']), String(e['target_node_id']));
+    }
+    writeAuditLog(db, 'workflow.restore', `version:${payload.versionId} → ${payload.workflowId}`);
+    triggers.reloadFromDatabase();
+    return true;
+  });
+
+  ipcHandle('versions:delete', (_e, versionId: string) => {
+    assertProEnterprise(db);
+    db.prepare(`DELETE FROM workflow_versions WHERE id = ?`).run(versionId);
+    return true;
   });
 }
 

@@ -24,6 +24,11 @@ export const NODE_CATALOG: readonly NodeCatalogEntry[] = [
   { kind: 'idle_trigger', nodeType: 'trigger', label: 'User idle', description: 'After keyboard/mouse idle time', icon: '💤', tier: 'pro', category: 'System' },
   { kind: 'memory_trigger', nodeType: 'trigger', label: 'Memory usage', description: 'RAM percent above/below threshold', icon: '🧠', tier: 'pro', category: 'System' },
   { kind: 'device_trigger', nodeType: 'trigger', label: 'USB device change', description: 'When USB device count changes', icon: '🔌', tier: 'pro', category: 'System' },
+  { kind: 'webhook_trigger', nodeType: 'trigger', label: 'Webhook', description: 'HTTP POST to a local webhook URL', icon: '🔗', tier: 'pro', category: 'Network' },
+  { kind: 'process_exit', nodeType: 'trigger', label: 'Process exit', description: 'When a monitored process stops', icon: '🛑', tier: 'pro', category: 'Apps' },
+  { kind: 'window_focus', nodeType: 'trigger', label: 'Window focus', description: 'When a specific window gains focus', icon: '🪟', tier: 'pro', category: 'Apps' },
+  { kind: 'display_change', nodeType: 'trigger', label: 'Display change', description: 'When monitor count or resolution changes', icon: '🖥', tier: 'pro', category: 'System' },
+  { kind: 'clipboard_monitor', nodeType: 'trigger', label: 'Clipboard change', description: 'When clipboard text changes', icon: '📋', tier: 'pro', category: 'System' },
 
   { kind: 'wifi_network', nodeType: 'condition', label: 'Wi‑Fi network', description: 'Require a specific SSID', icon: '📶', tier: 'free', category: 'Conditions' },
   { kind: 'time_window', nodeType: 'condition', label: 'Time window', description: 'Only between times of day', icon: '🪟', tier: 'free', category: 'Conditions' },
@@ -47,6 +52,10 @@ export const NODE_CATALOG: readonly NodeCatalogEntry[] = [
   { kind: 'clipboard_write', nodeType: 'action', label: 'Set clipboard', description: 'Copy text to the system clipboard', icon: '📌', tier: 'free', category: 'Actions' },
   { kind: 'write_text_file', nodeType: 'action', label: 'Write text file', description: 'Create, overwrite, or append a text file', icon: '📝', tier: 'free', category: 'Actions' },
   { kind: 'lock_workstation', nodeType: 'action', label: 'Lock screen', description: 'Lock Windows (Win+L equivalent)', icon: '🔒', tier: 'free', category: 'Actions' },
+  { kind: 'delay_wait', nodeType: 'action', label: 'Delay / wait', description: 'Pause the workflow for a set duration', icon: '⏳', tier: 'pro', category: 'Flow Control' },
+  { kind: 'send_email', nodeType: 'action', label: 'Send email', description: 'Send an email via SMTP', icon: '✉️', tier: 'pro', category: 'Integrations' },
+  { kind: 'slack_notification', nodeType: 'action', label: 'Slack message', description: 'Post a message to a Slack webhook', icon: '💬', tier: 'pro', category: 'Integrations' },
+  { kind: 'set_variable', nodeType: 'action', label: 'Set variable', description: 'Update a variable value at runtime', icon: '📦', tier: 'pro', category: 'Variables' },
 ] as const;
 
 export function catalogEntry(kind: string): NodeCatalogEntry | undefined {

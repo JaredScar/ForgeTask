@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { clipboard } from 'electron';
 import CronExpressionParser from 'cron-parser';
 import * as schedule from 'node-schedule';
 import chokidar from 'chokidar';
@@ -37,6 +38,9 @@ export class TriggerManager {
   private readonly lastPowerEventFire = new Map<string, number>();
   /** Per workflow+node: was the target process running on last poll (app_launch edge detect). */
   private readonly appLaunchWasRunning = new Map<string, boolean>();
+  private readonly processExitWasRunning = new Map<string, boolean>();
+  private lastClipboardText = '';
+  private lastDisplayCount: number | null = null;
   private engineReady = false;
 
   constructor(
@@ -128,7 +132,14 @@ export class TriggerManager {
         case 'idle_trigger':
         case 'memory_trigger':
         case 'device_trigger':
+        case 'process_exit':
+        case 'window_focus':
+        case 'display_change':
+        case 'clipboard_monitor':
           this.ensurePollLoop();
+          break;
+        case 'webhook_trigger':
+          /* Fired externally via POST /webhooks/:workflowId on the local API server. */
           break;
         default:
           break;
@@ -434,6 +445,69 @@ export class TriggerManager {
         }
       }
       this.lastUsbCount = usbN;
+
+      const processExitRows = this.db
+        .prepare(
+          `SELECT w.id as workflow_id, n.id as node_id, n.config FROM workflows w
+           JOIN workflow_nodes n ON n.workflow_id = w.id
+           WHERE w.enabled = 1 AND n.node_type = 'trigger' AND n.kind = 'process_exit'`
+        )
+        .all() as { workflow_id: string; node_id: string; config: string }[];
+
+      for (const r of processExitRows) {
+        let c: Record<string, unknown> = {};
+        try { c = JSON.parse(r.config) as Record<string, unknown>; } catch { continue; }
+        const needle = String(c['process'] ?? '').trim();
+        if (!needle) continue;
+        const running = await this.isProcessRunning(needle);
+        const key = `exit:${r.workflow_id}:${r.node_id}`;
+        const was = this.processExitWasRunning.get(key) ?? false;
+        if (!running && was) {
+          void this.engine.runWorkflow(r.workflow_id, 'process_exit');
+          this.recordTriggerFire(r.workflow_id, r.node_id);
+        }
+        this.processExitWasRunning.set(key, running);
+      }
+
+      const clipboardRows = this.db
+        .prepare(
+          `SELECT DISTINCT w.id as workflow_id FROM workflows w
+           JOIN workflow_nodes n ON n.workflow_id = w.id
+           WHERE w.enabled = 1 AND n.node_type = 'trigger' AND n.kind = 'clipboard_monitor'`
+        )
+        .all() as { workflow_id: string }[];
+
+      if (clipboardRows.length > 0) {
+        const current = clipboard.readText();
+        if (current !== this.lastClipboardText) {
+          this.lastClipboardText = current;
+          for (const r of clipboardRows) {
+            void this.engine.runWorkflow(r.workflow_id, 'clipboard_monitor');
+          }
+        }
+      }
+
+      const displayRows = this.db
+        .prepare(
+          `SELECT DISTINCT w.id as workflow_id FROM workflows w
+           JOIN workflow_nodes n ON n.workflow_id = w.id
+           WHERE w.enabled = 1 AND n.node_type = 'trigger' AND n.kind = 'display_change'`
+        )
+        .all() as { workflow_id: string }[];
+
+      if (displayRows.length > 0) {
+        let dispCount = 0;
+        try {
+          const graphics = await si.graphics();
+          dispCount = (graphics.displays ?? []).length;
+        } catch { /* ignore */ }
+        if (this.lastDisplayCount !== null && dispCount !== this.lastDisplayCount) {
+          for (const r of displayRows) {
+            void this.engine.runWorkflow(r.workflow_id, 'display_change');
+          }
+        }
+        this.lastDisplayCount = dispCount;
+      }
     } catch {
       /* ignore poll errors */
     }

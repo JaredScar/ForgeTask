@@ -242,6 +242,49 @@ export function startApiServer(
     })
   );
 
+  /**
+   * Webhook endpoint — no auth required (optionally validated by per-node secret).
+   * POST /webhooks/:workflowId  →  fires all enabled webhook_trigger nodes for that workflow.
+   */
+  app.post(
+    '/webhooks/:workflowId',
+    asyncRoute(async (req, res) => {
+      const workflowId = String(req.params['workflowId'] ?? '');
+      if (!workflowExists(db, workflowId)) {
+        res.status(404).json({ error: 'workflow not found' });
+        return;
+      }
+      const webhookNodes = db
+        .prepare(
+          `SELECT n.config FROM workflow_nodes n
+           JOIN workflows w ON w.id = n.workflow_id
+           WHERE n.workflow_id = ? AND n.node_type = 'trigger' AND n.kind = 'webhook_trigger' AND w.enabled = 1`
+        )
+        .all(workflowId) as { config: string }[];
+
+      if (webhookNodes.length === 0) {
+        res.status(404).json({ error: 'No enabled webhook trigger found for this workflow' });
+        return;
+      }
+
+      for (const node of webhookNodes) {
+        let cfg: Record<string, unknown> = {};
+        try { cfg = JSON.parse(node.config) as Record<string, unknown>; } catch { /* no config */ }
+        const secret = String(cfg['secret'] ?? '').trim();
+        if (secret) {
+          const provided = String((req.headers['x-webhook-secret'] ?? req.headers['authorization'] ?? '')).replace(/^Bearer\s+/i, '').trim();
+          if (provided !== secret) {
+            res.status(401).json({ error: 'Invalid webhook secret' });
+            return;
+          }
+        }
+      }
+
+      void engine.runWorkflow(String(workflowId), 'webhook_trigger');
+      res.json({ ok: true, workflow_id: workflowId, triggered: true });
+    })
+  );
+
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     void _next;
     const payload = toErrorPayload(err);

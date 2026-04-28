@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron';
-import { EntitlementRequiredError } from './entitlement';
+import { EntitlementRequiredError, WorkflowLimitError } from './entitlement';
 import { IPC_ERROR_FLAG, type IpcErrorEnvelope } from './ipc-error-envelope';
 
 export { IPC_ERROR_FLAG, type IpcErrorEnvelope, isIpcErrorEnvelope } from './ipc-error-envelope';
@@ -14,6 +14,9 @@ export function ipcHandle<TArgs extends unknown[], TRet>(
       return await handler(event, ...(args as TArgs));
     } catch (e) {
       if (e instanceof EntitlementRequiredError) {
+        return { [IPC_ERROR_FLAG]: true, code: e.code, message: e.message } satisfies IpcErrorEnvelope;
+      }
+      if (e instanceof WorkflowLimitError) {
         return { [IPC_ERROR_FLAG]: true, code: e.code, message: e.message } satisfies IpcErrorEnvelope;
       }
       const msg = e instanceof Error ? e.message : String(e);

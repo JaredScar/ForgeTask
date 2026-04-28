@@ -234,6 +234,13 @@ export interface TaskForgeBridge {
     >;
     clearUserData: () => Promise<boolean>;
   };
+  versions: {
+    list: (workflowId: string) => Promise<Array<{ id: string; workflow_id: string; version_number: number; name: string; created_at: string; label: string | null }>>;
+    get: (versionId: string) => Promise<Record<string, unknown> | null>;
+    label: (payload: { id: string; label: string }) => Promise<boolean>;
+    restore: (payload: { workflowId: string; versionId: string }) => Promise<boolean>;
+    delete: (versionId: string) => Promise<boolean>;
+  };
   dialog: {
     /** Native open-file dialog; returns absolute path or `null` if cancelled. */
     pickExecutable: () => Promise<string | null>;

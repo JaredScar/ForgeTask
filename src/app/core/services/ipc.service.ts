@@ -413,6 +413,13 @@ export class IpcService {
         },
         onStreamToken: () => () => undefined,
       },
+      versions: {
+        list: async () => [],
+        get: async () => null,
+        label: async () => false,
+        restore: async () => false,
+        delete: async () => false,
+      },
       data: {
         exportZip: async () => null,
         importZip: async () => ({ ok: false as const, error: 'Import is only available in the desktop app.' }),

@@ -119,3 +119,18 @@ CREATE INDEX IF NOT EXISTS idx_edges_wf ON workflow_edges(workflow_id);
 CREATE INDEX IF NOT EXISTS idx_logs_wf ON execution_logs(workflow_id);
 CREATE INDEX IF NOT EXISTS idx_log_steps_log ON log_steps(log_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_token ON api_keys(token);
+
+CREATE TABLE IF NOT EXISTS workflow_versions (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  version_number INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  nodes TEXT NOT NULL DEFAULT '[]',
+  edges TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  label TEXT DEFAULT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_versions_wf ON workflow_versions(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_workflow_versions_num ON workflow_versions(workflow_id, version_number);

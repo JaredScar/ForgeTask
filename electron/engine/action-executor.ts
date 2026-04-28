@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fsp from 'node:fs/promises';
 import { clipboard, shell } from 'electron';
+import type Database from 'better-sqlite3';
 import type { WorkflowNodeRow } from '../types';
 import { interpolateConfigString } from './variable-interpolation';
 import { runOpenApplication } from '../actions/open-app.action';
@@ -19,6 +20,9 @@ import {
   runZipArchive,
 } from '../actions/pro-actions';
 import { runInputSimulation } from '../actions/input-simulation';
+import { runDelayWait } from '../actions/delay-wait.action';
+import { runSendEmail } from '../actions/send-email.action';
+import { runSlackNotification } from '../actions/slack-notification.action';
 
 const execFileAsync = promisify(execFile);
 
@@ -33,7 +37,8 @@ export interface StepResult {
 export async function executeActionNode(
   node: WorkflowNodeRow,
   vars: Record<string, string> = {},
-  context: Record<string, string> = {}
+  context: Record<string, string> = {},
+  db?: Database.Database
 ): Promise<StepResult> {
   const start = Date.now();
   let config: Record<string, unknown>;
@@ -292,6 +297,37 @@ export async function executeActionNode(
         return r.ok
           ? { status: 'success', message: label, durationMs: Date.now() - start }
           : { status: 'failure', message: label, durationMs: Date.now() - start, error: r.error };
+      }
+      case 'delay_wait': {
+        const label = String(config['label'] ?? 'Delay / wait');
+        const r = await runDelayWait(config);
+        return { status: 'success', message: label, durationMs: Date.now() - start, output: `Waited ${r.waited}ms` };
+      }
+      case 'send_email': {
+        const label = String(config['label'] ?? 'Send email');
+        const r = await runSendEmail(config);
+        return r.ok
+          ? { status: 'success', message: label, durationMs: Date.now() - start }
+          : { status: 'failure', message: label, durationMs: Date.now() - start, error: r.error };
+      }
+      case 'slack_notification': {
+        const label = String(config['label'] ?? 'Slack notification');
+        const r = await runSlackNotification(config);
+        return r.ok
+          ? { status: 'success', message: label, durationMs: Date.now() - start }
+          : { status: 'failure', message: label, durationMs: Date.now() - start, error: r.error };
+      }
+      case 'set_variable': {
+        const label = String(config['label'] ?? 'Set variable');
+        const varName = String(config['variableName'] ?? '').trim();
+        const varValue = String(config['variableValue'] ?? '');
+        if (!varName) {
+          return { status: 'failure', message: label, durationMs: Date.now() - start, error: 'Missing variableName' };
+        }
+        if (db) {
+          db.prepare(`UPDATE variables SET value = ? WHERE name = ?`).run(varValue, varName);
+        }
+        return { status: 'success', message: label, durationMs: Date.now() - start, output: `${varName} = ${varValue}` };
       }
       default:
         return { status: 'failure', message: node.kind, durationMs: Date.now() - start, error: 'Unknown action kind' };
