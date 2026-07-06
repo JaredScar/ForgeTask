@@ -138,6 +138,13 @@ function runMigrations(db: InstanceType<typeof BetterSqlite3>): void {
     `);
     db.prepare(`INSERT INTO schema_migrations (version, applied_at) VALUES (9, ?)`).run(now);
   }
+  if (maxVer() < 10) {
+    const edgeCols = db.prepare(`PRAGMA table_info(workflow_edges)`).all() as { name: string }[];
+    if (!edgeCols.some((c) => c.name === 'branch')) {
+      db.exec(`ALTER TABLE workflow_edges ADD COLUMN branch TEXT`);
+    }
+    db.prepare(`INSERT INTO schema_migrations (version, applied_at) VALUES (10, ?)`).run(now);
+  }
 }
 
 /** Keep primary REST token mirrored in api_keys for scoped API access. */

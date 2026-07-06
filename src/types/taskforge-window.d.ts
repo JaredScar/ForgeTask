@@ -32,6 +32,7 @@ export interface WorkflowEdgeDto {
   workflow_id: string;
   source_node_id: string;
   target_node_id: string;
+  branch?: string | null;
 }
 
 export interface ExecutionLogDto {

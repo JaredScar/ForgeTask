@@ -38,6 +38,7 @@ interface CanvasEdge {
   id: string;
   source_node_id: string;
   target_node_id: string;
+  branch?: 'true' | 'false' | null;
 }
 
 @Component({
@@ -105,6 +106,15 @@ interface CanvasEdge {
           }
           @if (selectedEdgeId()) {
             <span class="text-xs text-tf-muted">Edge selected ·</span>
+            <select
+              class="rounded border border-tf-border bg-tf-bg px-2 py-0.5 text-xs text-neutral-200"
+              [ngModel]="selectedEdgeBranch()"
+              (ngModelChange)="setSelectedEdgeBranch($event)"
+            >
+              <option value="">Default path</option>
+              <option value="true">True branch</option>
+              <option value="false">False branch</option>
+            </select>
             <button
               type="button"
               class="rounded border border-red-500/30 px-2 py-0.5 text-xs text-red-400 hover:bg-red-500/10"
@@ -227,7 +237,7 @@ interface CanvasEdge {
                 <path
                   [attr.d]="edgePath(edge)"
                   fill="none"
-                  [attr.stroke]="selectedEdgeId() === edge.id ? '#22c55e' : '#3f3f47'"
+                  [attr.stroke]="edgeStroke(edge)"
                   [attr.stroke-width]="selectedEdgeId() === edge.id ? 2.5 : 1.5"
                   [attr.marker-end]="
                     selectedEdgeId() === edge.id ? 'url(#tf-arr)' : 'url(#tf-arr-dim)'
@@ -323,18 +333,35 @@ interface CanvasEdge {
                   </div>
                 </div>
 
-                <!-- Output port (bottom-center) — drag or click to start connecting -->
-                <div
-                  class="absolute -bottom-2.5 left-1/2 h-5 w-5 -translate-x-1/2 rounded-full border-2 transition-colors hover:bg-tf-green/60"
-                  [ngClass]="
-                    connectingFrom() === n.id
-                      ? 'border-tf-green bg-tf-green/50'
-                      : 'border-tf-green/50 bg-tf-green/15'
-                  "
-                  style="z-index: 2; cursor: crosshair"
-                  title="Click and drag to connect"
-                  (mousedown)="onPortMouseDown($event, n.id)"
-                ></div>
+                <!-- Output port(s) -->
+                @if (n.kind === 'branch_if') {
+                  <div
+                    class="absolute -bottom-2.5 left-[25%] h-5 w-5 -translate-x-1/2 rounded-full border-2 border-green-500/70 bg-green-500/20 transition-colors hover:bg-green-500/50"
+                    [ngClass]="connectingFrom() === n.id && connectingBranch() === 'true' ? 'ring-2 ring-green-400' : ''"
+                    style="z-index: 2; cursor: crosshair"
+                    title="True path — drag to connect"
+                    (mousedown)="onPortMouseDown($event, n.id, 'true')"
+                  ></div>
+                  <div
+                    class="absolute -bottom-2.5 left-[75%] h-5 w-5 -translate-x-1/2 rounded-full border-2 border-red-500/70 bg-red-500/20 transition-colors hover:bg-red-500/50"
+                    [ngClass]="connectingFrom() === n.id && connectingBranch() === 'false' ? 'ring-2 ring-red-400' : ''"
+                    style="z-index: 2; cursor: crosshair"
+                    title="False path — drag to connect"
+                    (mousedown)="onPortMouseDown($event, n.id, 'false')"
+                  ></div>
+                } @else {
+                  <div
+                    class="absolute -bottom-2.5 left-1/2 h-5 w-5 -translate-x-1/2 rounded-full border-2 transition-colors hover:bg-tf-green/60"
+                    [ngClass]="
+                      connectingFrom() === n.id
+                        ? 'border-tf-green bg-tf-green/50'
+                        : 'border-tf-green/50 bg-tf-green/15'
+                    "
+                    style="z-index: 2; cursor: crosshair"
+                    title="Click and drag to connect"
+                    (mousedown)="onPortMouseDown($event, n.id)"
+                  ></div>
+                }
               </div>
             }
           </div>
@@ -508,6 +535,7 @@ export class BuilderPageComponent implements OnInit {
   protected readonly panY = signal(40);
   protected readonly panningActive = signal(false);
   protected readonly connectingFrom = signal<string | null>(null);
+  protected readonly connectingBranch = signal<'true' | 'false' | null>(null);
   protected readonly mouseCanvasPos = signal({ x: 0, y: 0 });
   /** Exposed to template for node card width. */
   protected readonly NODE_W = NW;
@@ -537,7 +565,13 @@ export class BuilderPageComponent implements OnInit {
 
   protected readonly validationBanner = computed(() => this.computeValidationIssues().msgs);
 
-  /** Edges whose both endpoints exist among current nodes. */
+  protected readonly selectedEdgeBranch = computed(() => {
+    const id = this.selectedEdgeId();
+    if (!id) return '';
+    const edge = this.edges().find((e) => e.id === id);
+    return edge?.branch ?? '';
+  });
+
   protected readonly validEdges = computed(() => {
     const nodeIds = new Set(this.nodes().map((n) => n.id));
     return this.edges().filter(
@@ -562,11 +596,31 @@ export class BuilderPageComponent implements OnInit {
     const src = this.nodes().find((n) => n.id === edge.source_node_id);
     const tgt = this.nodes().find((n) => n.id === edge.target_node_id);
     if (!src || !tgt) return '';
-    const sx = src.position_x + NW / 2;
-    const sy = src.position_y + NH;
-    const tx = tgt.position_x + NW / 2;
-    const ty = tgt.position_y;
-    return `M ${sx} ${sy} C ${sx} ${sy + VC} ${tx} ${ty - VC} ${tx} ${ty}`;
+    const sp = this.portPosition(src, edge.branch ?? null, true);
+    const tp = this.portPosition(tgt, null, false);
+    return `M ${sp.x} ${sp.y} C ${sp.x} ${sp.y + VC} ${tp.x} ${tp.y - VC} ${tp.x} ${tp.y}`;
+  }
+
+  protected edgeStroke(edge: CanvasEdge): string {
+    if (this.selectedEdgeId() === edge.id) return '#22c55e';
+    if (edge.branch === 'true') return '#22c55e';
+    if (edge.branch === 'false') return '#ef4444';
+    return '#3f3f47';
+  }
+
+  private portPosition(
+    node: WorkflowNodeDto,
+    branch: 'true' | 'false' | null,
+    isOutput: boolean,
+  ): { x: number; y: number } {
+    if (isOutput && node.kind === 'branch_if') {
+      const xFrac = branch === 'false' ? 0.75 : 0.25;
+      return { x: node.position_x + NW * xFrac, y: node.position_y + NH };
+    }
+    return {
+      x: node.position_x + NW / 2,
+      y: node.position_y + (isOutput ? NH : 0),
+    };
   }
 
   protected previewPath(): string {
@@ -575,9 +629,8 @@ export class BuilderPageComponent implements OnInit {
     const src = this.nodes().find((n) => n.id === fromId);
     if (!src) return '';
     const { x: tx, y: ty } = this.mouseCanvasPos();
-    const sx = src.position_x + NW / 2;
-    const sy = src.position_y + NH;
-    return `M ${sx} ${sy} C ${sx} ${sy + VC} ${tx} ${ty - VC} ${tx} ${ty}`;
+    const sp = this.portPosition(src, this.connectingBranch(), true);
+    return `M ${sp.x} ${sp.y} C ${sp.x} ${sp.y + VC} ${tx} ${ty - VC} ${tx} ${ty}`;
   }
 
   // ── Global event listeners ────────────────────────────────────
@@ -622,6 +675,7 @@ export class BuilderPageComponent implements OnInit {
 
     if (e.key === 'Escape') {
       this.connectingFrom.set(null);
+      this.connectingBranch.set(null);
       this.selectedEdgeId.set(null);
     }
     if ((e.key === 'Delete' || e.key === 'Backspace') && !inInput) {
@@ -635,6 +689,7 @@ export class BuilderPageComponent implements OnInit {
     if (e.button !== 0) return;
     if (this.connectingFrom()) {
       this.connectingFrom.set(null);
+      this.connectingBranch.set(null);
       return;
     }
     this.panningActive.set(true);
@@ -643,7 +698,10 @@ export class BuilderPageComponent implements OnInit {
 
   protected onCanvasClick(): void {
     this.selectedEdgeId.set(null);
-    if (this.connectingFrom()) this.connectingFrom.set(null);
+    if (this.connectingFrom()) {
+      this.connectingFrom.set(null);
+      this.connectingBranch.set(null);
+    }
   }
 
   protected onWheel(e: WheelEvent): void {
@@ -679,8 +737,9 @@ export class BuilderPageComponent implements OnInit {
     e.stopPropagation();
     const from = this.connectingFrom();
     if (from) {
-      if (from !== nodeId) this.addEdge(from, nodeId);
+      if (from !== nodeId) this.addEdge(from, nodeId, this.connectingBranch());
       this.connectingFrom.set(null);
+      this.connectingBranch.set(null);
       return;
     }
     this.selectedId.set(nodeId);
@@ -688,10 +747,11 @@ export class BuilderPageComponent implements OnInit {
     this.showJson = false;
   }
 
-  protected onPortMouseDown(e: MouseEvent, nodeId: string): void {
+  protected onPortMouseDown(e: MouseEvent, nodeId: string, branch: 'true' | 'false' | null = null): void {
     e.stopPropagation();
     e.preventDefault();
     this.connectingFrom.set(nodeId);
+    this.connectingBranch.set(branch);
     this.mouseCanvasPos.set(this.toCanvasCoords(e));
   }
 
@@ -757,14 +817,40 @@ export class BuilderPageComponent implements OnInit {
     setTimeout(() => this.fitView(), 0);
   }
 
-  private addEdge(sourceId: string, targetId: string): void {
+  private addEdge(sourceId: string, targetId: string, branch: 'true' | 'false' | null = null): void {
     if (sourceId === targetId) return;
-    if (this.edges().some((e) => e.source_node_id === sourceId && e.target_node_id === targetId))
+    const src = this.nodes().find((n) => n.id === sourceId);
+    const effectiveBranch =
+      src?.kind === 'branch_if' ? branch ?? null : branch ?? null;
+    if (
+      this.edges().some(
+        (e) =>
+          e.source_node_id === sourceId &&
+          e.target_node_id === targetId &&
+          (e.branch ?? null) === (effectiveBranch ?? null),
+      )
+    ) {
       return;
+    }
     this.edges.update((list) => [
       ...list,
-      { id: crypto.randomUUID(), source_node_id: sourceId, target_node_id: targetId },
+      {
+        id: crypto.randomUUID(),
+        source_node_id: sourceId,
+        target_node_id: targetId,
+        branch: effectiveBranch,
+      },
     ]);
+    this.draft.set(true);
+  }
+
+  protected setSelectedEdgeBranch(value: string): void {
+    const id = this.selectedEdgeId();
+    if (!id) return;
+    const branch = value === 'true' || value === 'false' ? value : null;
+    this.edges.update((list) =>
+      list.map((e) => (e.id === id ? { ...e, branch } : e)),
+    );
     this.draft.set(true);
   }
 
@@ -856,7 +942,13 @@ export class BuilderPageComponent implements OnInit {
         });
       }
       this.nodes.set(sorted);
-      this.edges.set((data.edges ?? []) as CanvasEdge[]);
+      this.edges.set((data.edges ?? []).map((e) => ({
+        id: String(e.id),
+        source_node_id: String(e.source_node_id),
+        target_node_id: String(e.target_node_id),
+        branch:
+          e.branch === 'true' || e.branch === 'false' ? (e.branch as 'true' | 'false') : null,
+      })));
       this.draft.set(!!data.workflow.draft);
       const c = (data.workflow as WorkflowDto & { concurrency?: string }).concurrency;
       this.concurrency.set(c === 'queue' || c === 'skip' ? c : 'allow');
@@ -1053,6 +1145,25 @@ export class BuilderPageComponent implements OnInit {
         msgs.push(`Write text file "${this.label(n)}" needs a file path.`);
         bad.add(n.id);
       }
+      if (n.kind === 'input_simulation') {
+        const mode = String(cfg['mode'] ?? 'keyboard').toLowerCase();
+        if (mode === 'click') {
+          if (!Number.isFinite(Number(cfg['x'])) || !Number.isFinite(Number(cfg['y']))) {
+            msgs.push(`Keyboard / mouse "${this.label(n)}" needs click X and Y coordinates.`);
+            bad.add(n.id);
+          }
+        } else if (!String(cfg['text'] ?? cfg['keys'] ?? '').trim()) {
+          msgs.push(`Keyboard / mouse "${this.label(n)}" needs keystroke text.`);
+          bad.add(n.id);
+        }
+      }
+      if (n.kind === 'branch_if') {
+        const outs = this.edges().filter((e) => e.source_node_id === n.id);
+        if (!outs.length) {
+          msgs.push(`If/else branch "${this.label(n)}" needs at least one outgoing connection.`);
+          bad.add(n.id);
+        }
+      }
     }
     return { msgs, bad };
   }
@@ -1089,6 +1200,7 @@ export class BuilderPageComponent implements OnInit {
           id: e.id,
           source_node_id: e.source_node_id,
           target_node_id: e.target_node_id,
+          branch: e.branch ?? null,
         })),
       };
       const ok = await this.ipc.api.workflows.update(

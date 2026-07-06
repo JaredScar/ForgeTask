@@ -39,6 +39,8 @@ export function defaultConditionConfig(kind: string): Record<string, unknown> {
       return { start: '09:00', end: '17:00', label: 'Time window' };
     case 'app_running':
       return { process: '', label: 'App running' };
+    case 'branch_if':
+      return { label: 'If / else branch', checkKind: 'variable_truthy', variable: '' };
     default:
       return { label: kind };
   }
@@ -82,6 +84,8 @@ export function defaultActionConfig(kind: string): Record<string, unknown> {
       return { path: '', content: '', append: false, label: 'Write text file' };
     case 'lock_workstation':
       return { label: 'Lock screen' };
+    case 'input_simulation':
+      return { mode: 'keyboard', text: '', x: 0, y: 0, button: 'left', label: 'Keyboard / mouse input' };
     default:
       return { label: kind };
   }

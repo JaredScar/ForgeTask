@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS workflow_edges (
   id TEXT PRIMARY KEY,
   workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
   source_node_id TEXT NOT NULL REFERENCES workflow_nodes(id) ON DELETE CASCADE,
-  target_node_id TEXT NOT NULL REFERENCES workflow_nodes(id) ON DELETE CASCADE
+  target_node_id TEXT NOT NULL REFERENCES workflow_nodes(id) ON DELETE CASCADE,
+  branch TEXT
 );
 
 CREATE TABLE IF NOT EXISTS execution_logs (

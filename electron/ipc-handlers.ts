@@ -281,10 +281,17 @@ export function registerIpcHandlers(
           ? (payload.edges as Array<Record<string, unknown>>)
           : linearEdgesFromNodes(payload.nodes as Array<Record<string, unknown>>);
         const insE = db.prepare(
-          `INSERT INTO workflow_edges (id, workflow_id, source_node_id, target_node_id) VALUES (?, ?, ?, ?)`
+          `INSERT INTO workflow_edges (id, workflow_id, source_node_id, target_node_id, branch) VALUES (?, ?, ?, ?, ?)`
         );
         for (const e of edgeRows) {
-          insE.run(String(e['id'] ?? randomUUID()), payload.id, String(e['source_node_id']), String(e['target_node_id']));
+          const branch = e['branch'] != null && e['branch'] !== '' ? String(e['branch']) : null;
+          insE.run(
+            String(e['id'] ?? randomUUID()),
+            payload.id,
+            String(e['source_node_id']),
+            String(e['target_node_id']),
+            branch
+          );
         }
       }
       if (Array.isArray(payload.nodes) && isProEnterpriseUnlocked(db)) {
@@ -396,12 +403,15 @@ export function registerIpcHandlers(
     }
     const edges = db.prepare(`SELECT * FROM workflow_edges WHERE workflow_id = ?`).all(sourceId) as Record<string, unknown>[];
     const insE = db.prepare(
-      `INSERT INTO workflow_edges (id, workflow_id, source_node_id, target_node_id) VALUES (?, ?, ?, ?)`
+      `INSERT INTO workflow_edges (id, workflow_id, source_node_id, target_node_id, branch) VALUES (?, ?, ?, ?, ?)`
     );
     for (const e of edges) {
       const src = idMap.get(String(e['source_node_id']));
       const tgt = idMap.get(String(e['target_node_id']));
-      if (src && tgt) insE.run(randomUUID(), newId, src, tgt);
+      if (src && tgt) {
+        const branch = e['branch'] != null && e['branch'] !== '' ? String(e['branch']) : null;
+        insE.run(randomUUID(), newId, src, tgt, branch);
+      }
     }
     writeAuditLog(db, 'workflow.duplicate', `${sourceId} → ${newId}`);
     triggers.reloadFromDatabase();
@@ -1272,9 +1282,18 @@ export function registerIpcHandlers(
     for (const n of nodes) {
       ins.run(String(n['id'] ?? randomUUID()), payload.workflowId, String(n['node_type']), String(n['kind']), String(n['config'] ?? '{}'), Number(n['position_x'] ?? 0), Number(n['position_y'] ?? 0), Number(n['sort_order'] ?? 0));
     }
-    const insE = db.prepare(`INSERT INTO workflow_edges (id, workflow_id, source_node_id, target_node_id) VALUES (?, ?, ?, ?)`);
+    const insE = db.prepare(
+      `INSERT INTO workflow_edges (id, workflow_id, source_node_id, target_node_id, branch) VALUES (?, ?, ?, ?, ?)`
+    );
     for (const e of edges) {
-      insE.run(String(e['id'] ?? randomUUID()), payload.workflowId, String(e['source_node_id']), String(e['target_node_id']));
+      const branch = e['branch'] != null && e['branch'] !== '' ? String(e['branch']) : null;
+      insE.run(
+        String(e['id'] ?? randomUUID()),
+        payload.workflowId,
+        String(e['source_node_id']),
+        String(e['target_node_id']),
+        branch
+      );
     }
     writeAuditLog(db, 'workflow.restore', `version:${payload.versionId} → ${payload.workflowId}`);
     triggers.reloadFromDatabase();

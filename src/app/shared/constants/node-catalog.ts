@@ -33,6 +33,7 @@ export const NODE_CATALOG: readonly NodeCatalogEntry[] = [
   { kind: 'wifi_network', nodeType: 'condition', label: 'Wi‑Fi network', description: 'Require a specific SSID', icon: '📶', tier: 'free', category: 'Conditions' },
   { kind: 'time_window', nodeType: 'condition', label: 'Time window', description: 'Only between times of day', icon: '🪟', tier: 'free', category: 'Conditions' },
   { kind: 'app_running', nodeType: 'condition', label: 'App running', description: 'Require a process name', icon: '▶️', tier: 'free', category: 'Conditions' },
+  { kind: 'branch_if', nodeType: 'condition', label: 'If / else branch', description: 'Route to true or false paths', icon: '🔀', tier: 'free', category: 'Flow Control' },
 
   { kind: 'open_application', nodeType: 'action', label: 'Open application', description: 'Launch an executable', icon: '🖥', tier: 'free', category: 'Actions' },
   { kind: 'show_notification', nodeType: 'action', label: 'Notification', description: 'Desktop toast', icon: '🔔', tier: 'free', category: 'Actions' },
@@ -56,6 +57,7 @@ export const NODE_CATALOG: readonly NodeCatalogEntry[] = [
   { kind: 'send_email', nodeType: 'action', label: 'Send email', description: 'Send an email via SMTP', icon: '✉️', tier: 'pro', category: 'Integrations' },
   { kind: 'slack_notification', nodeType: 'action', label: 'Slack message', description: 'Post a message to a Slack webhook', icon: '💬', tier: 'pro', category: 'Integrations' },
   { kind: 'set_variable', nodeType: 'action', label: 'Set variable', description: 'Update a variable value at runtime', icon: '📦', tier: 'pro', category: 'Variables' },
+  { kind: 'input_simulation', nodeType: 'action', label: 'Keyboard / mouse', description: 'Send keystrokes or click at screen coordinates', icon: '⌨️', tier: 'pro', category: 'Actions' },
 ] as const;
 
 export function catalogEntry(kind: string): NodeCatalogEntry | undefined {

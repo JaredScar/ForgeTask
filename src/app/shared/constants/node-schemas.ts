@@ -120,6 +120,28 @@ export const NODE_CONFIG_SCHEMAS: Record<string, SchemaField[]> = {
     { key: 'label', label: 'Label', type: 'text' },
     { key: 'process', label: 'Process name contains', type: 'text' },
   ],
+  branch_if: [
+    { key: 'label', label: 'Label', type: 'text' },
+    {
+      key: 'checkKind',
+      label: 'Check',
+      type: 'select',
+      options: [
+        { value: 'variable_truthy', label: 'Variable is set / truthy' },
+        { value: 'variable_equals', label: 'Variable equals value' },
+        { value: 'variable_contains', label: 'Variable contains text' },
+        { value: 'wifi_network', label: 'Wi‑Fi network (SSID)' },
+        { value: 'time_window', label: 'Time window' },
+        { value: 'app_running', label: 'App is running' },
+      ],
+    },
+    { key: 'variable', label: 'Variable name', type: 'text', placeholder: 'e.g. portOpen or MY_VAR' },
+    { key: 'value', label: 'Compare value', type: 'text' },
+    { key: 'ssid', label: 'Wi‑Fi SSID', type: 'text' },
+    { key: 'start', label: 'Window start (HH:MM)', type: 'text', placeholder: '09:00' },
+    { key: 'end', label: 'Window end (HH:MM)', type: 'text', placeholder: '17:00' },
+    { key: 'process', label: 'Process name contains', type: 'text' },
+  ],
 
   open_application: [
     { key: 'label', label: 'Label', type: 'text' },
@@ -279,6 +301,36 @@ export const NODE_CONFIG_SCHEMAS: Record<string, SchemaField[]> = {
     { key: 'append', label: 'Append (don’t overwrite)', type: 'boolean' },
   ],
   lock_workstation: [{ key: 'label', label: 'Label', type: 'text' }],
+  input_simulation: [
+    { key: 'label', label: 'Label', type: 'text' },
+    {
+      key: 'mode',
+      label: 'Mode',
+      type: 'select',
+      options: [
+        { value: 'keyboard', label: 'Keyboard (SendKeys)' },
+        { value: 'click', label: 'Mouse click' },
+      ],
+    },
+    {
+      key: 'text',
+      label: 'Keystrokes',
+      type: 'textarea',
+      placeholder: 'Use SendKeys syntax: hello{ENTER} ^c %{F4}',
+    },
+    { key: 'x', label: 'Click X (screen px)', type: 'number' },
+    { key: 'y', label: 'Click Y (screen px)', type: 'number' },
+    {
+      key: 'button',
+      label: 'Mouse button',
+      type: 'select',
+      options: [
+        { value: 'left', label: 'Left' },
+        { value: 'right', label: 'Right' },
+        { value: 'middle', label: 'Middle' },
+      ],
+    },
+  ],
 };
 
 export function schemaForKind(kind: string): SchemaField[] | undefined {

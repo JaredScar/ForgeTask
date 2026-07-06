@@ -41,6 +41,7 @@ export const PRO_ACTION_KINDS = new Set([
   'send_email',
   'slack_notification',
   'set_variable',
+  'input_simulation',
 ]);
 
 function entitlementSecretCandidates(): readonly string[] {
