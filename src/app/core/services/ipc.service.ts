@@ -423,6 +423,10 @@ export class IpcService {
       data: {
         exportZip: async () => null,
         importZip: async () => ({ ok: false as const, error: 'Import is only available in the desktop app.' }),
+        importTaskScheduler: async () => ({
+          ok: false as const,
+          error: 'Task Scheduler import is only available in the desktop app.',
+        }),
         clearUserData: async () => true,
       },
       app: {

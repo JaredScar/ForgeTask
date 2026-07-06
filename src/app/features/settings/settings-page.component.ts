@@ -291,6 +291,22 @@ import { LoadingService } from '../../core/services/loading.service';
       </div>
 
       <div class="rounded-xl border border-tf-border bg-tf-card p-4">
+        <h2 class="text-sm font-medium">Windows Task Scheduler import</h2>
+        <p class="mt-1 text-xs text-tf-muted">
+          Import one or more tasks from a Task Scheduler XML export (<code class="text-[11px] text-neutral-500">.xml</code>).
+          In Task Scheduler: select task(s) → Action → Export. Each task becomes a new workflow (existing workflows are kept).
+          Review triggers and actions in the builder after import.
+        </p>
+        <button
+          type="button"
+          (click)="importTaskScheduler()"
+          class="mt-3 rounded-lg border border-tf-border px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+        >
+          Import Task Scheduler XML…
+        </button>
+      </div>
+
+      <div class="rounded-xl border border-tf-border bg-tf-card p-4">
         <h2 class="text-sm font-medium">Maintenance</h2>
         <p class="mt-1 text-xs text-tf-muted">
           Reset automation, UI, and trigger preferences (everything in “Automation &amp; logs” and “UI &amp; appearance”) to defaults.
@@ -560,6 +576,32 @@ export class SettingsPageComponent implements OnInit {
       await this.loadSettingsForm();
     } catch {
       this.toast.error('Could not import data');
+    }
+  }
+
+  async importTaskScheduler(): Promise<void> {
+    if (this.isViewer()) {
+      this.toast.warning('Viewers cannot import workflows.');
+      return;
+    }
+    try {
+      const r = await this.ipc.api.data.importTaskScheduler();
+      if (!r.ok) {
+        if (r.error === 'cancelled') return;
+        this.toast.error(r.error);
+        return;
+      }
+      let msg = `Imported ${r.imported} workflow(s) from Task Scheduler.`;
+      if (r.skipped > 0) msg += ` ${r.skipped} skipped (free tier limit).`;
+      this.toast.success(msg);
+      if (r.warnings.length) {
+        const preview = r.warnings.slice(0, 2).join(' ');
+        this.toast.info(
+          r.warnings.length > 2 ? `${preview} (+${r.warnings.length - 2} more — review in builder)` : preview
+        );
+      }
+    } catch {
+      this.toast.error('Could not import Task Scheduler XML');
     }
   }
 

@@ -129,6 +129,11 @@ contextBridge.exposeInMainWorld('taskForge', {
       inv<{ ok: true; workflows: number; variables: number; settingsApplied: number } | { ok: false; error: string }>(
         'data:importZip'
       ),
+    importTaskScheduler: () =>
+      inv<
+        | { ok: true; imported: number; skipped: number; workflowIds: string[]; warnings: string[] }
+        | { ok: false; error: string }
+      >('data:importTaskScheduler'),
     clearUserData: () => inv<boolean>('data:clearUserData'),
   },
   versions: {

@@ -58,6 +58,13 @@ interface LastRunDetail {
           @if (!isViewer()) {
             <button
               type="button"
+              (click)="importTaskScheduler()"
+              class="h-9 rounded-xl border border-tf-border px-4 text-sm text-neutral-200 hover:bg-neutral-800"
+            >
+              Import Task Scheduler…
+            </button>
+            <button
+              type="button"
               (click)="newWorkflow()"
               class="h-9 rounded-xl bg-white px-4 text-sm font-semibold text-black shadow-sm hover:bg-neutral-100"
             >
@@ -74,17 +81,24 @@ interface LastRunDetail {
             [description]="
               isViewer()
                 ? 'No workflows yet. View-only accounts cannot create workflows here.'
-                : 'Create your first automation, use onboarding, or install a template from the Marketplace (Pro).'
+                : 'Create your first automation, import from Windows Task Scheduler, use onboarding, or install a template from the Marketplace (Pro).'
             "
           />
           @if (!isViewer()) {
-            <div class="mt-4 flex justify-center">
+            <div class="mt-4 flex flex-wrap justify-center gap-2">
               <button
                 type="button"
                 (click)="newWorkflow()"
                 class="rounded-lg bg-tf-green px-4 py-2 text-sm font-medium text-black hover:opacity-90"
               >
                 Create workflow
+              </button>
+              <button
+                type="button"
+                (click)="importTaskScheduler()"
+                class="rounded-lg border border-tf-border px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+              >
+                Import Task Scheduler…
               </button>
             </div>
           }
@@ -509,6 +523,36 @@ export class WorkflowsPageComponent implements OnInit {
       void this.router.navigate(['/builder', id]);
     } catch {
       this.toast.error('Could not duplicate workflow');
+    }
+  }
+
+  async importTaskScheduler(): Promise<void> {
+    if (this.isViewer()) {
+      this.toast.warning('Viewers cannot import workflows.');
+      return;
+    }
+    try {
+      const r = await this.ipc.api.data.importTaskScheduler();
+      if (!r.ok) {
+        if (r.error === 'cancelled') return;
+        this.toast.error(r.error);
+        return;
+      }
+      await this.reload();
+      let msg = `Imported ${r.imported} workflow(s) from Task Scheduler.`;
+      if (r.skipped > 0) msg += ` ${r.skipped} skipped (free tier limit).`;
+      this.toast.success(msg);
+      if (r.warnings.length) {
+        const preview = r.warnings.slice(0, 2).join(' ');
+        this.toast.info(
+          r.warnings.length > 2 ? `${preview} (+${r.warnings.length - 2} more — review in builder)` : preview
+        );
+      }
+      if (r.workflowIds.length === 1) {
+        void this.router.navigate(['/builder', r.workflowIds[0]]);
+      }
+    } catch {
+      this.toast.error('Could not import Task Scheduler XML');
     }
   }
 }

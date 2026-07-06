@@ -124,6 +124,12 @@ export interface IpcInvokeMap {
       | { ok: true; workflows: number; variables: number; settingsApplied: number }
       | { ok: false; error: string };
   };
+  'data:importTaskScheduler': {
+    req: [];
+    res:
+      | { ok: true; imported: number; skipped: number; workflowIds: string[]; warnings: string[] }
+      | { ok: false; error: string };
+  };
   'app:getPaths': { req: []; res: { userData: string } };
   'app:getStats': { req: []; res: AppStats };
 }

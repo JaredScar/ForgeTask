@@ -50,6 +50,7 @@ import {
 import * as si from 'systeminformation';
 import { isLocalDevOpenAiPlaceholder } from './dev-placeholders';
 import { importDataFromZipBuffer } from './data-import';
+import { importTaskSchedulerXmlBuffer } from './task-scheduler-import';
 import { heuristicWorkflowFromPrompt } from './ai-heuristic';
 
 function readSettingValue(db: Database.Database, key: string): string | null {
@@ -1173,6 +1174,29 @@ export function registerIpcHandlers(
     if (!result.ok) return result;
     triggers.reloadFromDatabase();
     writeAuditLog(db, 'data.import', `zip:${filePaths[0]}`);
+    return result;
+  });
+
+  ipcHandle('data:importTaskScheduler', async () => {
+    const win = getWin();
+    const dialogOpts: OpenDialogOptions = {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Task Scheduler XML', extensions: ['xml'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+    };
+    const { filePaths, canceled } = win
+      ? await dialog.showOpenDialog(win, dialogOpts)
+      : await dialog.showOpenDialog(dialogOpts);
+    if (canceled || !filePaths?.[0]) {
+      return { ok: false as const, error: 'cancelled' };
+    }
+    const buf = await fs.promises.readFile(filePaths[0]);
+    const result = importTaskSchedulerXmlBuffer(db, buf);
+    if (!result.ok) return result;
+    triggers.reloadFromDatabase();
+    writeAuditLog(db, 'data.import_task_scheduler', `xml:${filePaths[0]} imported=${result.imported}`);
     return result;
   });
 
