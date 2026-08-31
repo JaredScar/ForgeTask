@@ -4,8 +4,16 @@ import { app as electronApp } from 'electron';
 import type Database from 'better-sqlite3';
 import type { AutomationEngine } from './engine/automation-engine';
 import type { TriggerManager } from './engine/trigger-manager';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { isLocalDevRestApiPlaceholder } from './dev-placeholders';
+import { findApiKeyByToken, readSecretSetting } from './secret-store';
+
+/** Constant-time comparison so token checks do not leak content via timing. */
+export function timingSafeEqualString(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a, 'utf8').digest();
+  const hb = createHash('sha256').update(b, 'utf8').digest();
+  return timingSafeEqual(ha, hb);
+}
 
 type ApiRequest = express.Request & { tfScopes?: string[] };
 
@@ -47,11 +55,11 @@ function hasScope(scopes: string[], required: string): boolean {
 }
 
 function resolveBearerAuth(db: Database.Database, bearer: string): string[] | null {
-  const settingsKey = (db.prepare(`SELECT value FROM settings WHERE key = 'api_key'`).get() as { value: string } | undefined)?.value;
-  if (settingsKey && bearer === settingsKey) {
+  const settingsKey = readSecretSetting(db, 'api_key');
+  if (settingsKey && timingSafeEqualString(bearer, settingsKey)) {
     return [SCOPE_ALL];
   }
-  const row = db.prepare(`SELECT id, scopes FROM api_keys WHERE token = ?`).get(bearer) as { id: string; scopes: string } | undefined;
+  const row = findApiKeyByToken(db, bearer);
   if (!row) return null;
   const scopes = parseScopesJson(row.scopes);
   if (!scopes.length) return null;

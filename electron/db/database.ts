@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { app } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type BetterSqlite3 from 'better-sqlite3';
+import { encryptSecret, migratePlaintextSecrets, readSecretSetting } from '../secret-store';
 import {
   LEGACY_ROAMING_SQLITE_BASENAME,
   LEGACY_ROAMING_USERDATA_DIR_NAMES,
@@ -151,12 +152,12 @@ function runMigrations(db: InstanceType<typeof BetterSqlite3>): void {
 function ensureApiKeysSynced(db: InstanceType<typeof BetterSqlite3>): void {
   const count = (db.prepare(`SELECT COUNT(*) as c FROM api_keys`).get() as { c: number }).c;
   if (count > 0) return;
-  const tok = (db.prepare(`SELECT value FROM settings WHERE key = 'api_key'`).get() as { value: string } | undefined)?.value;
+  const tok = readSecretSetting(db, 'api_key');
   if (!tok) return;
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO api_keys (id, name, token, scopes, created_at, is_primary) VALUES (?, 'Default', ?, '["*"]', ?, 1)`
-  ).run(randomUUID(), tok, now);
+  ).run(randomUUID(), encryptSecret(tok), now);
 }
 
 /** API key, local user row, and default settings — safe to run on every startup. */
@@ -164,7 +165,7 @@ function ensureAppDefaults(db: InstanceType<typeof BetterSqlite3>): void {
   const hasApi = db.prepare(`SELECT 1 FROM settings WHERE key = 'api_key'`).get();
   if (!hasApi) {
     const key = 'tf_live_' + randomUUID().replace(/-/g, '').slice(0, 24);
-    db.prepare(`INSERT INTO settings (key, value) VALUES ('api_key', ?)`).run(key);
+    db.prepare(`INSERT INTO settings (key, value) VALUES ('api_key', ?)`).run(encryptSecret(key));
   }
 
   db.prepare(`UPDATE team_members SET email = ? WHERE is_self = 1 AND email = ?`).run('local@taskforge.app', LEGACY_SELF_TEAM_EMAIL);
@@ -240,6 +241,8 @@ export function openDatabase(): InstanceType<typeof BetterSqlite3> {
   db.pragma('synchronous = FULL');
   db.exec(loadSchemaSql());
   runMigrations(db);
+  // Encrypt secrets left in plaintext by older versions before anything reads them.
+  migratePlaintextSecrets(db);
   ensureAppDefaults(db);
   return db;
 }

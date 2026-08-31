@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, Tray, nativeImage, type NativeImage } from 'electron';
+import { app, BrowserWindow, dialog, Menu, Tray, nativeImage, session, shell, type NativeImage } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -7,10 +7,9 @@ import { AutomationEngine } from './engine/automation-engine';
 import { TriggerManager } from './engine/trigger-manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { startApiServer } from './api-server';
-import { readStoredEntitlementKey } from './entitlement';
+import { assertEntitlementBuildConfig, readStoredEntitlementKey } from './entitlement';
 import { getLicenseApiUrl, getLicenseMode, refreshLicenseOnline } from './license-remote';
 import { purgeOldLogs } from './db/log-retention';
-import type { UpdateCheckResult } from 'electron-updater';
 
 const isDev = process.argv.includes('--dev');
 
@@ -93,6 +92,84 @@ function shutdownDatabase(): void {
   }
 }
 
+/** Origins the renderer itself is allowed to occupy. */
+const ALLOWED_RENDERER_ORIGINS = new Set(isDev ? ['http://127.0.0.1:4200'] : []);
+
+function isAllowedRendererTarget(rawUrl: string): boolean {
+  // The packaged app runs from file://; the dev build runs from the Angular server.
+  if (rawUrl.startsWith('file://')) return true;
+  try {
+    return ALLOWED_RENDERER_ORIGINS.has(new URL(rawUrl).origin);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Keeps the renderer pinned to app content. Without this, a link or injected
+ * markup could navigate the window (which holds the full `window.taskForge`
+ * IPC bridge) to an attacker-controlled page, or open a child window that
+ * inherits it.
+ */
+function applyNavigationPolicy(contents: Electron.WebContents): void {
+  contents.on('will-navigate', (event, url) => {
+    if (isAllowedRendererTarget(url)) return;
+    event.preventDefault();
+    if (/^https?:$/.test(new URL(url).protocol)) void shell.openExternal(url);
+  });
+
+  contents.on('will-attach-webview', (event) => {
+    // The app never uses <webview>; attaching one would create an unaudited surface.
+    event.preventDefault();
+  });
+
+  contents.setWindowOpenHandler(({ url }) => {
+    // External links open in the user's browser, never in a privileged window.
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        void shell.openExternal(parsed.toString());
+      }
+    } catch {
+      /* ignore malformed URLs */
+    }
+    return { action: 'deny' };
+  });
+}
+
+/**
+ * Defence-in-depth CSP for the renderer. The packaged app loads only local
+ * assets, so remote script/frame sources are refused outright.
+ */
+function applyContentSecurityPolicy(): void {
+  const connectSrc = isDev
+    ? "'self' http://127.0.0.1:4200 ws://127.0.0.1:4200"
+    : "'self'";
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          [
+            "default-src 'self'",
+            // Angular's runtime styles require inline style attributes.
+            "style-src 'self' 'unsafe-inline'",
+            `script-src 'self'${isDev ? " 'unsafe-eval'" : ''}`,
+            "img-src 'self' data: blob:",
+            "font-src 'self' data:",
+            `connect-src ${connectSrc}`,
+            "object-src 'none'",
+            "frame-src 'none'",
+            "base-uri 'none'",
+            "form-action 'none'",
+          ].join('; '),
+        ],
+      },
+    });
+  });
+}
+
 function createWindow(): void {
   const windowIcon = loadWindowIcon();
   mainWindow = new BrowserWindow({
@@ -118,6 +195,8 @@ function createWindow(): void {
   };
   /* Remote URL / SPA can adopt the document favicon and override the Windows taskbar icon — reset after load. */
   mainWindow.webContents.on('did-finish-load', reapplyWindowIcon);
+
+  applyNavigationPolicy(mainWindow.webContents);
 
   mainWindow.once('ready-to-show', () => {
     reapplyWindowIcon();
@@ -259,6 +338,8 @@ void app
     triggers.reloadFromDatabase();
     triggers.runStartupTriggers();
 
+    assertEntitlementBuildConfig();
+    applyContentSecurityPolicy();
     createWindow();
     createTray();
 

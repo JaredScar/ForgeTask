@@ -1,15 +1,37 @@
 import type Database from 'better-sqlite3';
 import AdmZip from 'adm-zip';
 import { isProEnterpriseUnlocked, FREE_WORKFLOW_LIMIT } from './entitlement';
+import { encryptSecret } from './secret-store';
 
-/** Keys never applied from an import file (secrets and local cache). */
-const SETTINGS_IMPORT_BLOCKLIST = new Set([
-  'openai_api_key',
-  'local_ai_gateway_token',
-  'pro_entitlement_key',
-  'api_key',
-  'marketplace_cache_json',
+/**
+ * Settings an import file may set — an allowlist of user preferences only.
+ *
+ * This deliberately replaces the previous blocklist: a blocklist silently
+ * admits every key nobody thought to add, which let an import file overwrite
+ * the cached license-entitlement timestamps (`license_entitlement_valid_until`
+ * and friends) and grant itself Pro. Anything not listed here is ignored.
+ */
+const SETTINGS_IMPORT_ALLOWLIST = new Set([
+  'log_retention_days',
+  'log_retention_forever',
+  'clear_logs_on_startup',
+  'engine_auto_start',
+  'notify_desktop',
+  'toast_position',
+  'sound_on_workflow_failure',
+  'replay_missed_cron',
+  'default_workflow_priority',
+  'ui_locale',
+  'ui_theme',
+  'ui_accent',
+  'builder_show_json_default',
+  'max_concurrent_workflows',
+  'confirm_delete_workflow',
+  'trigger_poll_interval_ms',
 ]);
+
+/** Caps an imported settings value so a crafted file cannot bloat the DB. */
+const MAX_SETTING_VALUE_LENGTH = 2000;
 
 export type ImportZipResult =
   | { ok: true; workflows: number; variables: number; settingsApplied: number }
@@ -112,12 +134,14 @@ export function importDataFromZipBuffer(db: Database.Database, buffer: Buffer): 
         `INSERT INTO variables (id, name, type, value, is_secret, scope, description) VALUES (?, ?, ?, ?, ?, ?, ?)`
       );
       for (const v of variables) {
+        const isSecret = Number(v['is_secret'] ?? 0) ? 1 : 0;
+        const rawValue = String(v['value'] ?? '');
         insV.run(
           String(v['id']),
           String(v['name']),
           String(v['type'] ?? 'string'),
-          String(v['value'] ?? ''),
-          Number(v['is_secret'] ?? 0) ? 1 : 0,
+          isSecret ? encryptSecret(rawValue) : rawValue,
+          isSecret,
           String(v['scope'] ?? 'global'),
           String(v['description'] ?? '').slice(0, 2000)
         );
@@ -126,8 +150,8 @@ export function importDataFromZipBuffer(db: Database.Database, buffer: Buffer): 
       const setS = db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`);
       for (const row of settingsRows) {
         const key = row.key != null ? String(row.key) : '';
-        if (!key || SETTINGS_IMPORT_BLOCKLIST.has(key)) continue;
-        setS.run(key, String(row.value ?? ''));
+        if (!key || !SETTINGS_IMPORT_ALLOWLIST.has(key)) continue;
+        setS.run(key, String(row.value ?? '').slice(0, MAX_SETTING_VALUE_LENGTH));
         settingsApplied += 1;
       }
     });

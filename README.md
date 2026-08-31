@@ -63,7 +63,7 @@ The **Free** tier includes core automation (workflows, basic triggers/actions, l
 ## Stack
 
 - **Electron** (main process + preload)
-- **Angular 19** (standalone components, lazy routes)
+- **Angular 21** (standalone components, lazy routes)
 - **Tailwind CSS v4**
 - **SQLite** (`better-sqlite3`) for workflows, logs, variables, audit trail
 - **Express** local API (`127.0.0.1:38474`) to trigger workflows with a Bearer token
@@ -78,6 +78,11 @@ The **Free** tier includes core automation (workflows, basic triggers/actions, l
 | `npm run electron` | Compile Electron and launch (loads built Angular from `dist/`) |
 | `npm run electron:dist` | Build + Windows NSIS installer via `electron-builder` |
 | `npm run rebuild:native` | Recompile `better-sqlite3` for the installed **Electron** Node ABI (run after `npm install` or upgrading Electron) |
+| `npm run test:ci` | Angular unit tests (Vitest, via `@angular/build:unit-test`) |
+| `npm run test:electron` | Main-process unit tests (`node:test` via `tsx`) |
+| `npm run test:all` | Both suites |
+
+Angular tests run on **Vitest**, not Karma. Karma pulled in the legacy webpack toolchain, whose `webpack-dev-server` → `sockjs` → `uuid` chain accounted for most of this project's `npm audit` findings; the build targets use `@angular/build` directly and the webpack packages are gone. Main-process specs stay on `node:test` because `better-sqlite3` is compiled for Electron's ABI and cannot be loaded by plain Node.
 
 ## Development
 
@@ -97,6 +102,19 @@ The **AI Workflow Assistant** can call a **local gateway** instead of OpenAI. Th
 3. In **Settings → AI Workflow Assistant**, choose **Local gateway**, confirm the base URL and model, then **Save AI settings**.
 
 If you use submodules: `git submodule update --init --recursive` after clone.
+
+### Secrets at rest
+
+Secrets in `taskforge.db` are encrypted with Electron [`safeStorage`](https://www.electronjs.org/docs/latest/api/safe-storage), which is backed by the OS keystore (DPAPI on Windows, Keychain on macOS, libsecret on Linux). Covered values are the OpenAI API key, the local gateway token, the Pro entitlement key, the REST `api_key` and every `api_keys.token`, plus variables marked secret. Encrypted rows carry a `tfsec1:` prefix; see [`electron/secret-store.ts`](electron/secret-store.ts).
+
+Because the key material is scoped to the logged-in OS user, another local account — or anyone who copies the database out of a backup or a stolen disk — cannot read them. This does **not** protect against code already running as you: it can ask the OS to decrypt too.
+
+Two consequences worth knowing:
+
+- **Existing databases upgrade automatically** on first launch. The migration only rewrites rows that are still plaintext, so it is safe to run repeatedly. A database moved to a different OS user or machine keeps working, but the secrets in it read back empty and must be re-entered.
+- **Exports never contain secrets.** `taskforge-export.zip` already omitted the secret settings keys; secret *variables* are now exported with an empty value too, since safeStorage ciphertext would be undecryptable elsewhere and plaintext would defeat the point. The variable definition still restores — re-enter the value after import.
+
+If the platform has no working keystore, TaskForge logs a warning and stores the value unencrypted rather than losing it.
 
 **Legacy strings:** [`electron/legacy-paths.ts`](electron/legacy-paths.ts) and [`src/app/core/legacy-onboarding-key.ts`](src/app/core/legacy-onboarding-key.ts) are the only places that still embed historical folder names, SQLite filenames, `localStorage` keys, email, or dev HMAC material from pre-TaskForge installs. They exist so migrations keep working; everything else uses TaskForge naming.
 

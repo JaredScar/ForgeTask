@@ -414,7 +414,7 @@ export function parseTaskSchedulerXml(xml: string): TaskSchedulerImportDraft[] {
 }
 
 function uniqueWorkflowName(db: Database.Database, baseName: string): string {
-  let name = baseName.slice(0, 200);
+  const name = baseName.slice(0, 200);
   const exists = db.prepare(`SELECT 1 FROM workflows WHERE name = ? LIMIT 1`);
   if (!exists.get(name)) return name;
   for (let i = 2; i < 100; i++) {

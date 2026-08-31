@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { desktopCapturer } from 'electron';
+import { assertPublicHttpUrl } from './http-request.action';
 
 function parseSourcesList(config: Record<string, unknown>): string[] {
   const raw = config['sources'];
@@ -64,17 +65,35 @@ export async function runDownloadFile(config: Record<string, unknown>): Promise<
   const urlStr = String(config['url'] ?? '').trim();
   const dest = String(config['destinationPath'] ?? '').trim();
   if (!urlStr || !dest) return { ok: false, error: 'Missing url or destinationPath' };
+
+  // Same SSRF policy as the http_request action: loopback/private targets are
+  // blocked (including via DNS) unless the node explicitly opts in.
+  const allowPrivateNetwork = config['allowPrivateNetwork'] === true;
   let u: URL;
   try {
-    u = new URL(urlStr);
-  } catch {
-    return { ok: false, error: 'Invalid URL' };
-  }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-    return { ok: false, error: 'Only http and https URLs are allowed' };
+    u = await assertPublicHttpUrl(urlStr, allowPrivateNetwork);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Invalid URL' };
   }
 
-  const res = await fetch(u, { redirect: 'follow' });
+  // `redirect: 'manual'` so a 30x cannot bounce the request to a private
+  // address that bypassed the pre-flight check above.
+  let res = await fetch(u, { redirect: 'manual' });
+  for (let hop = 0; hop < 5 && res.status >= 300 && res.status < 400; hop += 1) {
+    const location = res.headers.get('location');
+    if (!location) break;
+    let nextUrl: URL;
+    try {
+      nextUrl = await assertPublicHttpUrl(new URL(location, u).toString(), allowPrivateNetwork);
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'Blocked redirect target' };
+    }
+    u = nextUrl;
+    res = await fetch(u, { redirect: 'manual' });
+  }
+  if (res.status >= 300 && res.status < 400) {
+    return { ok: false, error: 'Too many redirects' };
+  }
   if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
   if (!res.body) return { ok: false, error: 'Empty response body' };
 

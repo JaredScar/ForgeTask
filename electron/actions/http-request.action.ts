@@ -1,6 +1,9 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
+/** Redirect hops followed before giving up, matching typical fetch limits. */
+const MAX_REDIRECTS = 5;
+
 export function isPrivateOrLoopbackIp(host: string): boolean {
   const ipVersion = isIP(host);
   if (ipVersion === 4) {
@@ -53,13 +56,34 @@ export async function runHttpRequest(config: Record<string, unknown>): Promise<{
   const headers: Record<string, string> =
     typeof headersRaw === 'object' && headersRaw !== null ? (headersRaw as Record<string, string>) : {};
   if (!url) return { status: 0, body: 'Missing url' };
-  const safeUrl = await assertPublicHttpUrl(url, allowPrivateNetwork);
-  const res = await fetch(safeUrl, {
+  let safeUrl = await assertPublicHttpUrl(url, allowPrivateNetwork);
+  const signal = AbortSignal.timeout(timeoutMs);
+
+  // Redirects are followed manually so each hop is re-checked against the SSRF
+  // policy; `redirect: 'follow'` would let a 30x reach a private address.
+  let res = await fetch(safeUrl, {
     method,
     headers,
     body: method === 'GET' || method === 'HEAD' ? undefined : body,
-    signal: AbortSignal.timeout(timeoutMs),
+    redirect: 'manual',
+    signal,
   });
+
+  for (let hop = 0; hop < MAX_REDIRECTS && res.status >= 300 && res.status < 400; hop += 1) {
+    const location = res.headers.get('location');
+    if (!location) break;
+    safeUrl = await assertPublicHttpUrl(new URL(location, safeUrl).toString(), allowPrivateNetwork);
+    // Per fetch semantics, 303 (and 301/302 for POST) downgrade to GET.
+    const nextMethod = res.status === 303 || ((res.status === 301 || res.status === 302) && method === 'POST') ? 'GET' : method;
+    res = await fetch(safeUrl, {
+      method: nextMethod,
+      headers,
+      body: nextMethod === 'GET' || nextMethod === 'HEAD' ? undefined : body,
+      redirect: 'manual',
+      signal,
+    });
+  }
+
   const text = await res.text();
   return { status: res.status, body: text.slice(0, 8000) };
 }

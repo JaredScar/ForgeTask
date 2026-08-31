@@ -2,12 +2,23 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { getLicenseApiUrl, getLicenseMode, isOnlineEntitlementSatisfied } from './license-remote';
 import { LEGACY_DEV_ENTITLEMENT_SECRET } from './legacy-paths';
+import { isPackagedBuild } from './runtime-mode';
+import { readSecretSetting } from './secret-store';
 
 /** Settings row key — Pro + Enterprise product entitlement (not the REST `api_key`). */
 export const PRO_ENTITLEMENT_SETTINGS_KEY = 'pro_entitlement_key';
 
-/** Dev / CI unlock; do not ship to paying customers as the only protection. */
+/**
+ * Dev / CI unlock. Refused outright in packaged builds (see
+ * `isDevBypassAllowed`), so a shipped installer can never be unlocked with a
+ * string that is published in this repository.
+ */
 export const DEV_ENTITLEMENT_BYPASS = 'local-dev-pro-enterprise';
+
+/** The dev bypass only applies to unpackaged (source-run) builds. */
+function isDevBypassAllowed(): boolean {
+  return !isPackagedBuild();
+}
 
 /** Current prefix; legacy prefix still accepted for older signed keys (see `legacy-paths.ts`). */
 const KEY_PREFIXES = new Set(['tfent1', 'adent1']);
@@ -44,10 +55,37 @@ export const PRO_ACTION_KINDS = new Set([
   'input_simulation',
 ]);
 
+/**
+ * HMAC secrets accepted for offline key verification.
+ *
+ * The dev defaults are public (this repo is open source), so official builds
+ * must set `TASKFORGE_ENTITLEMENT_SECRET` and additionally enforce entitlement
+ * online via `TASKFORGE_LICENSE_API_URL` + `TASKFORGE_LICENSE_MODE=online_strict`.
+ * See `assertEntitlementBuildConfig` for the release-time warning.
+ */
 function entitlementSecretCandidates(): readonly string[] {
   const e = process.env.TASKFORGE_ENTITLEMENT_SECRET?.trim();
   if (e) return [e];
   return ['taskforge-desktop-dev-entitlement-v1', LEGACY_DEV_ENTITLEMENT_SECRET];
+}
+
+/**
+ * Warns at startup when a packaged build relies solely on the public dev HMAC
+ * secret, which would let anyone forge a Pro key from published source.
+ */
+export function assertEntitlementBuildConfig(): void {
+  if (!isPackagedBuild()) return;
+
+  const hasPrivateSecret = Boolean(process.env.TASKFORGE_ENTITLEMENT_SECRET?.trim());
+  const enforcedOnline = Boolean(getLicenseApiUrl()) && getLicenseMode() !== 'local';
+
+  if (!hasPrivateSecret && !enforcedOnline) {
+    console.warn(
+      '[entitlement] This packaged build accepts keys signed with the PUBLIC dev secret. ' +
+        'Set TASKFORGE_ENTITLEMENT_SECRET at build time and/or TASKFORGE_LICENSE_API_URL ' +
+        'with TASKFORGE_LICENSE_MODE=online_strict before distributing.'
+    );
+  }
 }
 
 /**
@@ -90,7 +128,7 @@ export function decodeEntitlementPayload(raw: string): { seats?: number; exp?: n
 export function validateProEnterpriseKey(raw: string): boolean {
   const key = raw.trim();
   if (!key) return false;
-  if (key === DEV_ENTITLEMENT_BYPASS) return true;
+  if (key === DEV_ENTITLEMENT_BYPASS) return isDevBypassAllowed();
   const decoded = decodeEntitlementPayload(raw);
   if (!decoded) return false;
   if (typeof decoded.exp === 'number' && decoded.exp < Math.floor(Date.now() / 1000)) return false;
@@ -98,10 +136,7 @@ export function validateProEnterpriseKey(raw: string): boolean {
 }
 
 export function readStoredEntitlementKey(db: Database.Database): string {
-  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(PRO_ENTITLEMENT_SETTINGS_KEY) as
-    | { value: string }
-    | undefined;
-  return row?.value ?? '';
+  return readSecretSetting(db, PRO_ENTITLEMENT_SETTINGS_KEY);
 }
 
 /**

@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { decryptOptional } from '../secret-store';
 
 const VAR_TOKEN = /\{\{([a-zA-Z0-9_]+)\}\}/g;
 const CTX_TOKEN = /\{\{context\.([a-zA-Z0-9_]+)\}\}/g;
@@ -8,7 +9,7 @@ export function loadVariableMap(db: Database.Database): Record<string, string> {
   const rows = db.prepare(`SELECT name, value FROM variables ORDER BY name`).all() as { name: string; value: string }[];
   const m: Record<string, string> = {};
   for (const r of rows) {
-    if (r.name) m[r.name] = r.value ?? '';
+    if (r.name) m[r.name] = decryptOptional(r.value);
   }
   return m;
 }

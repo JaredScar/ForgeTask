@@ -36,9 +36,17 @@ import {
   PRO_TRIGGER_KINDS,
   readStoredEntitlementKey,
   validateProEnterpriseKey,
-  WorkflowLimitError,
   workflowNodesRequireProEntitlement,
 } from './entitlement';
+import {
+  decryptOptional,
+  decryptSecret,
+  encryptSecret,
+  isEncryptedValue,
+  readSecretSetting,
+  SECRET_SETTING_KEYS,
+  writeSecretSetting,
+} from './secret-store';
 import {
   clearOnlineEntitlementCache,
   getLicenseApiUrl,
@@ -53,9 +61,61 @@ import { importDataFromZipBuffer } from './data-import';
 import { importTaskSchedulerXmlBuffer } from './task-scheduler-import';
 import { heuristicWorkflowFromPrompt } from './ai-heuristic';
 
+/** User preferences the settings UI owns outright. */
+const PREFERENCE_SETTINGS_KEYS = [
+  'log_retention_days',
+  'log_retention_forever',
+  'clear_logs_on_startup',
+  'engine_auto_start',
+  'notify_desktop',
+  'toast_position',
+  'sound_on_workflow_failure',
+  'replay_missed_cron',
+  'default_workflow_priority',
+  'ui_locale',
+  'ui_theme',
+  'ui_accent',
+  'builder_show_json_default',
+  'max_concurrent_workflows',
+  'confirm_delete_workflow',
+  'trigger_poll_interval_ms',
+] as const;
+
+/** AI provider configuration, also owned by the settings UI. */
+const AI_SETTINGS_KEYS = [
+  'ai_provider',
+  'openai_api_key',
+  'local_ai_base_url',
+  'local_ai_model',
+  'local_ai_gateway_token',
+] as const;
+
+/**
+ * Keys `settings:set` accepts.
+ *
+ * The channel used to write any key the renderer named, which let renderer-side
+ * code overwrite server-authoritative values — notably the cached license
+ * timestamps in `license-remote.ts` — and self-grant Pro. Entitlement keys are
+ * written only through the dedicated `entitlement:*` handlers.
+ */
+const WRITABLE_SETTINGS_KEYS = new Set<string>([...PREFERENCE_SETTINGS_KEYS, ...AI_SETTINGS_KEYS]);
+
+/**
+ * Keys `settings:get` returns. Superset of the writable set: the UI shows
+ * whether an entitlement key is stored, but cannot set it here.
+ */
+const READABLE_SETTINGS_KEYS = new Set<string>([
+  ...WRITABLE_SETTINGS_KEYS,
+  PRO_ENTITLEMENT_SETTINGS_KEY,
+]);
+
+/** Caps a single settings value so the renderer cannot bloat the database. */
+const MAX_SETTING_VALUE_LENGTH = 8000;
+
 function readSettingValue(db: Database.Database, key: string): string | null {
   const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
-  return row?.value ?? null;
+  if (row?.value == null) return null;
+  return isEncryptedValue(row.value) ? decryptSecret(row.value) : row.value;
 }
 
 /** `null` → keyword heuristic (OpenAI provider but no real API key). */
@@ -157,7 +217,7 @@ export function registerIpcHandlers(
     }
 
     if (mode === 'online_strict' && url) {
-      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(PRO_ENTITLEMENT_SETTINGS_KEY, trimmed);
+      writeSecretSetting(db, PRO_ENTITLEMENT_SETTINGS_KEY, trimmed);
       const remote = await refreshLicenseOnline(db);
       if (!remote.ok) {
         db.prepare(`DELETE FROM settings WHERE key = ?`).run(PRO_ENTITLEMENT_SETTINGS_KEY);
@@ -176,7 +236,7 @@ export function registerIpcHandlers(
       return { ok: false as const, unlocked: isProEnterpriseUnlocked(db), error: 'invalid_key' as const };
     }
 
-    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(PRO_ENTITLEMENT_SETTINGS_KEY, trimmed);
+    writeSecretSetting(db, PRO_ENTITLEMENT_SETTINGS_KEY, trimmed);
 
     if (url && mode === 'hybrid') {
       const remote = await refreshLicenseOnline(db);
@@ -599,7 +659,10 @@ export function registerIpcHandlers(
 
   ipcHandle('variables:list', () => {
     if (!isProEnterpriseUnlocked(db)) return [];
-    return db.prepare(`SELECT * FROM variables ORDER BY name`).all();
+    const rows = db.prepare(`SELECT * FROM variables ORDER BY name`).all() as Array<Record<string, unknown>>;
+    return rows.map((r) =>
+      isEncryptedValue(r['value'] as string) ? { ...r, value: decryptSecret(r['value'] as string) } : r
+    );
   });
 
   ipcHandle(
@@ -612,7 +675,7 @@ export function registerIpcHandlers(
         randomUUID(),
         v.name,
         v.type,
-        v.value,
+        v.is_secret ? encryptSecret(String(v.value ?? '')) : v.value,
         v.is_secret ? 1 : 0,
         v.scope ?? 'global',
         String(v.description ?? '').slice(0, 2000)
@@ -628,12 +691,28 @@ export function registerIpcHandlers(
       assertProEnterprise(db);
       const desc =
         v.description !== undefined ? String(v.description).slice(0, 2000) : (null as string | null);
+
+      // The stored value's encryption depends on the *resulting* is_secret, which
+      // may be toggled without also sending a new value, so resolve both against
+      // the current row instead of letting SQL COALESCE decide independently.
+      const current = db.prepare(`SELECT value, is_secret FROM variables WHERE id = ?`).get(v.id) as
+        | { value: string; is_secret: number }
+        | undefined;
+      let nextValue: string | null = null;
+      if (current) {
+        const willBeSecret = v.is_secret != null ? v.is_secret : Boolean(current.is_secret);
+        const plain = v.value !== undefined ? String(v.value) : decryptOptional(current.value);
+        nextValue = willBeSecret ? encryptSecret(plain) : plain;
+      } else if (v.value !== undefined) {
+        nextValue = String(v.value);
+      }
+
       db.prepare(
         `UPDATE variables SET name = COALESCE(?, name), type = COALESCE(?, type), value = COALESCE(?, value), is_secret = COALESCE(?, is_secret), description = COALESCE(?, description) WHERE id = ?`
       ).run(
         v.name ?? null,
         v.type ?? null,
-        v.value ?? null,
+        nextValue,
         v.is_secret != null ? (v.is_secret ? 1 : 0) : null,
         desc,
         v.id
@@ -836,13 +915,23 @@ export function registerIpcHandlers(
   ipcHandle('engine:getStatus', () => ({ running: triggers.isEngineReady() }));
 
   ipcHandle('settings:get', (_e, key: string) => {
-    const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
-    return row?.value ?? null;
+    if (!READABLE_SETTINGS_KEYS.has(String(key))) return null;
+    return readSettingValue(db, String(key));
   });
 
   ipcHandle('settings:set', (_e, payload: { key: string; value: string }) => {
-    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(payload.key, payload.value);
-    writeAuditLog(db, 'settings.set', payload.key);
+    const key = String(payload?.key ?? '');
+    if (!WRITABLE_SETTINGS_KEYS.has(key)) {
+      writeAuditLog(db, 'settings.set.rejected', key);
+      throw new Error(`Setting "${key}" is not writable from the UI`);
+    }
+    const value = String(payload?.value ?? '').slice(0, MAX_SETTING_VALUE_LENGTH);
+    if (SECRET_SETTING_KEYS.has(key)) {
+      writeSecretSetting(db, key, value);
+    } else {
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value);
+    }
+    writeAuditLog(db, 'settings.set', key);
     return true;
   });
 
@@ -975,22 +1064,22 @@ export function registerIpcHandlers(
   ipcHandle('api:getKey', () => {
     if (!isProEnterpriseUnlocked(db)) return '';
     const row = db.prepare(`SELECT token FROM api_keys WHERE is_primary = 1 LIMIT 1`).get() as { token: string } | undefined;
-    if (row?.token) return row.token;
-    const fallback = db.prepare(`SELECT value FROM settings WHERE key = 'api_key'`).get() as { value: string } | undefined;
-    return fallback?.value ?? '';
+    const primary = decryptSecret(row?.token);
+    if (primary) return primary;
+    return readSecretSetting(db, 'api_key');
   });
 
   ipcHandle('api:regenerateKey', () => {
     assertProEnterprise(db);
     const key = 'tf_live_' + randomUUID().replace(/-/g, '').slice(0, 24);
-    const upd = db.prepare(`UPDATE api_keys SET token = ? WHERE is_primary = 1`).run(key);
+    const upd = db.prepare(`UPDATE api_keys SET token = ? WHERE is_primary = 1`).run(encryptSecret(key));
     if (upd.changes === 0) {
       const now = new Date().toISOString();
       db.prepare(
         `INSERT INTO api_keys (id, name, token, scopes, created_at, is_primary) VALUES (?, 'Default', ?, '["*"]', ?, 1)`
-      ).run(randomUUID(), key, now);
+      ).run(randomUUID(), encryptSecret(key), now);
     }
-    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('api_key', ?)`).run(key);
+    writeSecretSetting(db, 'api_key', key);
     writeAuditLog(db, 'api.regenerate_key', 'api_key');
     return key;
   });
@@ -1019,7 +1108,7 @@ export function registerIpcHandlers(
     db.prepare(`INSERT INTO api_keys (id, name, token, scopes, created_at, is_primary) VALUES (?, ?, ?, ?, ?, 0)`).run(
       id,
       name,
-      token,
+      encryptSecret(token),
       JSON.stringify(scopes),
       now
     );
@@ -1148,7 +1237,12 @@ export function registerIpcHandlers(
       workflows: db.prepare(`SELECT * FROM workflows`).all(),
       workflow_nodes: db.prepare(`SELECT * FROM workflow_nodes`).all(),
       workflow_edges: db.prepare(`SELECT * FROM workflow_edges`).all(),
-      variables: db.prepare(`SELECT * FROM variables`).all(),
+      // Secret values are withheld for the same reason the secret settings keys
+      // below are: an export is a portable file the user may email or sync. The
+      // variable definition still restores, with an empty value to re-enter.
+      variables: (db.prepare(`SELECT * FROM variables`).all() as Array<Record<string, unknown>>).map((v) =>
+        Number(v['is_secret'] ?? 0) ? { ...v, value: '' } : v
+      ),
       settings: db
         .prepare(
           `SELECT key, value FROM settings WHERE key NOT IN ('openai_api_key', 'local_ai_gateway_token', 'pro_entitlement_key', 'api_key', 'marketplace_cache_json')`
