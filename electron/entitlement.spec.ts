@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { DEV_ENTITLEMENT_BYPASS, decodeEntitlementPayload, validateProEnterpriseKey } from './entitlement';
+import {
+  DEV_ENTITLEMENT_BYPASS,
+  FREE_WORKFLOW_LIMIT,
+  WorkflowLimitError,
+  assertFreeWorkflowLimit,
+  assertProEnterprise,
+  decodeEntitlementPayload,
+  isProEnterpriseUnlocked,
+  validateProEnterpriseKey,
+  workflowNodesRequireProEntitlement,
+} from './entitlement';
 
 /** Builds a `tfent1.<payload>.<sig>` key signed with the given secret. */
 function signKey(payloadObj: Record<string, unknown>, secret: string): string {
@@ -51,4 +61,38 @@ void test('a tampered payload invalidates the signature', () => {
   const [prefix, , sig] = key.split('.');
   const swappedPayload = Buffer.from(JSON.stringify({ seats: 999 })).toString('base64url');
   assert.equal(validateProEnterpriseKey(`${prefix}.${swappedPayload}.${sig}`), false);
+});
+
+function settingsDb(value: string | undefined, workflowCount: number) {
+  return {
+    prepare(sql: string) {
+      return {
+        get() {
+          if (sql.includes('COUNT(*)')) return { count: workflowCount };
+          if (value === undefined) return undefined;
+          return { value };
+        },
+      };
+    },
+  };
+}
+
+void test('a free account can create workflows until the cap', () => {
+  assert.doesNotThrow(() => assertFreeWorkflowLimit(settingsDb(undefined, FREE_WORKFLOW_LIMIT - 1) as never));
+  assert.throws(() => assertFreeWorkflowLimit(settingsDb(undefined, FREE_WORKFLOW_LIMIT) as never), WorkflowLimitError);
+  assert.throws(() => assertProEnterprise(settingsDb(undefined, 0) as never), /ENTITLEMENT_REQUIRED/);
+});
+
+void test('the local dev bypass unlocks Pro and skips the free workflow cap', () => {
+  const db = settingsDb(DEV_ENTITLEMENT_BYPASS, 99);
+  assert.equal(isProEnterpriseUnlocked(db as never), true);
+  assert.doesNotThrow(() => assertFreeWorkflowLimit(db as never));
+});
+
+void test('workflowNodesRequireProEntitlement detects pro triggers and actions only', () => {
+  assert.equal(workflowNodesRequireProEntitlement([{ node_type: 'trigger', kind: 'time_schedule' }]), false);
+  assert.equal(workflowNodesRequireProEntitlement([{ node_type: 'action', kind: 'show_notification' }]), false);
+  assert.equal(workflowNodesRequireProEntitlement([{ node_type: 'trigger', kind: 'file_change' }]), true);
+  assert.equal(workflowNodesRequireProEntitlement([{ node_type: 'action', kind: 'http_request' }]), true);
+  assert.equal(workflowNodesRequireProEntitlement([{ node_type: 'condition', kind: 'http_request' }]), false);
 });

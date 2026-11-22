@@ -26,6 +26,15 @@ import { runSlackNotification } from '../actions/slack-notification.action';
 
 const execFileAsync = promisify(execFile);
 
+export function lockWorkstationPlan(
+  platform: NodeJS.Platform
+): { ok: true; file: string; args: string[] } | { ok: false; error: string } {
+  if (platform !== 'win32') {
+    return { ok: false, error: 'lock_workstation is supported on Windows only' };
+  }
+  return { ok: true, file: 'rundll32.exe', args: ['user32.dll,LockWorkStation'] };
+}
+
 export interface StepResult {
   status: 'success' | 'failure';
   message: string;
@@ -216,16 +225,17 @@ export async function executeActionNode(
       }
       case 'lock_workstation': {
         const label = String(config['label'] ?? 'Lock screen');
-        if (process.platform !== 'win32') {
+        const plan = lockWorkstationPlan(process.platform);
+        if (!plan.ok) {
           return {
             status: 'failure',
             message: label,
             durationMs: Date.now() - start,
-            error: 'lock_workstation is supported on Windows only',
+            error: plan.error,
           };
         }
         try {
-          await execFileAsync('rundll32.exe', ['user32.dll,LockWorkStation'], { windowsHide: true });
+          await execFileAsync(plan.file, plan.args, { windowsHide: true });
           return { status: 'success', message: label, durationMs: Date.now() - start };
         } catch (e) {
           return {

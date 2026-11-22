@@ -13,16 +13,27 @@ const execFileAsync = promisify(execFile);
 
 type TriggerRow = { workflow_id: string; node_id: string; kind: string; config: string };
 import type { AutomationEngine } from './automation-engine';
+import {
+  appLaunchShouldFire,
+  clipboardShouldFire,
+  cpuMemoryFireReason,
+  cooledDown,
+  deviceConnectedShouldFire,
+  deviceTriggerShouldFire,
+  displayShouldFire,
+  idleShouldFire,
+  memoryThresholdMet,
+  missedCronShouldReplay,
+  networkMatches,
+  normalizePowerEvent,
+  powerEventShouldFire,
+  processExitShouldFire,
+  processMatchesConfig,
+  triggerBinding,
+  windowFocusShouldFire,
+} from './trigger-rules';
 type Scheduled = schedule.Job;
 type Watcher = FSWatcher;
-
-function processMatchesConfig(processField: string, procName?: string): boolean {
-  if (!procName || !processField.trim()) return false;
-  const want = processField.trim().toLowerCase().replace(/\.exe$/i, '');
-  const name = procName.toLowerCase();
-  const base = name.replace(/\.exe$/i, '');
-  return name === want || base === want || name.includes(want) || base.includes(want);
-}
 
 export class TriggerManager {
   private readonly jobs = new Map<string, Scheduled>();
@@ -39,8 +50,11 @@ export class TriggerManager {
   /** Per workflow+node: was the target process running on last poll (app_launch edge detect). */
   private readonly appLaunchWasRunning = new Map<string, boolean>();
   private readonly processExitWasRunning = new Map<string, boolean>();
-  private lastClipboardText = '';
+  private lastClipboardText: string | null = null;
   private lastDisplayCount: number | null = null;
+  private lastWindowTitle: string | null = null;
+  /** Per workflow+node device count for device_connected / device_trigger. */
+  private readonly lastDeviceCount = new Map<string, number>();
   private engineReady = false;
 
   constructor(
@@ -86,8 +100,9 @@ export class TriggerManager {
         continue;
       }
       const key = `${r.workflow_id}:${r.node_id}`;
-      switch (r.kind) {
-        case 'time_schedule': {
+      const binding = triggerBinding(r.kind, config);
+      switch (binding.mode) {
+        case 'cron': {
           const cron = String(config['cron'] ?? '0 9 * * *');
           const job = schedule.scheduleJob(cron, () => {
             void this.engine.runWorkflow(r.workflow_id, 'time_schedule');
@@ -96,50 +111,33 @@ export class TriggerManager {
           if (job) this.jobs.set(key, job);
           break;
         }
-        case 'system_startup':
+        case 'startup':
+        case 'power':
+        case 'webhook':
           break;
-        case 'app_launch':
-          this.ensurePollLoop();
-          break;
-        case 'interval_trigger': {
-          const mins = Math.max(1, Math.min(24 * 60, Number(config['intervalMinutes'] ?? 30)));
-          const ms = mins * 60 * 1000;
-          const ikey = `${r.workflow_id}:${r.node_id}`;
+        case 'interval': {
+          const ms = binding.minutes * 60 * 1000;
           const timer = setInterval(() => {
             void this.engine.runWorkflow(r.workflow_id, 'interval_trigger');
             this.recordTriggerFire(r.workflow_id, r.node_id);
           }, ms);
-          this.intervalTimers.set(ikey, timer);
+          this.intervalTimers.set(key, timer);
           break;
         }
-        case 'power_event':
-          break;
-        case 'network_change':
+        case 'network':
           this.startNetworkPoll(r.workflow_id, String(config['ssid'] ?? ''));
           break;
-        case 'file_change': {
-          const watchPath = String(config['path'] ?? '');
-          if (!watchPath) break;
-          const w = chokidar.watch(watchPath, { ignoreInitial: true });
+        case 'watch': {
+          if (!binding.path) break;
+          const w = chokidar.watch(binding.path, { ignoreInitial: true });
           w.on('all', () => {
             void this.engine.runWorkflow(r.workflow_id, 'file_change');
           });
           this.watchers.set(key, w);
           break;
         }
-        case 'cpu_memory_usage':
-        case 'device_connected':
-        case 'idle_trigger':
-        case 'memory_trigger':
-        case 'device_trigger':
-        case 'process_exit':
-        case 'window_focus':
-        case 'display_change':
-        case 'clipboard_monitor':
+        case 'poll':
           this.ensurePollLoop();
-          break;
-        case 'webhook_trigger':
-          /* Fired externally via POST /webhooks/:workflowId on the local API server. */
           break;
         default:
           break;
@@ -206,7 +204,7 @@ export class TriggerManager {
         /* no trigger_state */
       }
 
-      if (lastMs < prevScheduled.getTime() - 500) {
+      if (missedCronShouldReplay(lastMs, prevScheduled.getTime())) {
         void this.engine.runWorkflow(r.workflow_id, 'time_schedule');
         this.recordTriggerFire(r.workflow_id, r.node_id);
       }
@@ -224,16 +222,6 @@ export class TriggerManager {
     }
     this.powerCleanups.length = 0;
 
-    const allowed = new Set([
-      'on-ac',
-      'on-battery',
-      'resume',
-      'suspend',
-      'lock-screen',
-      'unlock-screen',
-      'shutdown',
-    ]);
-
     const buckets = new Map<string, { workflow_id: string; node_id: string }[]>();
     for (const r of rows) {
       if (r.kind !== 'power_event') continue;
@@ -243,8 +231,8 @@ export class TriggerManager {
       } catch {
         continue;
       }
-      const ev = String(c['event'] ?? 'resume').trim();
-      if (!allowed.has(ev)) continue;
+      const ev = normalizePowerEvent(c['event']);
+      if (!ev) continue;
       const list = buckets.get(ev) ?? [];
       list.push({ workflow_id: r.workflow_id, node_id: r.node_id });
       buckets.set(ev, list);
@@ -257,7 +245,7 @@ export class TriggerManager {
         for (const t of targets) {
           const dedupeKey = `${t.workflow_id}:${t.node_id}:${ev}`;
           const last = this.lastPowerEventFire.get(dedupeKey) ?? 0;
-          if (now - last < 3_000) continue;
+          if (!powerEventShouldFire(last, now)) continue;
           this.lastPowerEventFire.set(dedupeKey, now);
           void this.engine.runWorkflow(t.workflow_id, 'power_event');
           this.recordTriggerFire(t.workflow_id, t.node_id);
@@ -332,7 +320,7 @@ export class TriggerManager {
         const running = await this.isProcessRunning(procNeedle);
         const key = `${r.workflow_id}:${r.node_id}`;
         const was = this.appLaunchWasRunning.get(key) ?? false;
-        if (running && !was) {
+        if (appLaunchShouldFire(was, running)) {
           void this.engine.runWorkflow(r.workflow_id, 'app_launch');
           this.recordTriggerFire(r.workflow_id, r.node_id);
         }
@@ -359,12 +347,15 @@ export class TriggerManager {
         } catch {
           continue;
         }
-        const cpuTh = Number(c['cpuPercent'] ?? 90);
-        const memTh = Number(c['memPercent'] ?? 90);
-        if (cpu >= cpuTh || usedPct >= memTh) {
-          if (cpu >= cpuTh && cpu > this.lastCpu + 5) void this.engine.runWorkflow(r.workflow_id, 'cpu_memory_usage');
-          else if (usedPct >= memTh && usedPct > this.lastMem + 5) void this.engine.runWorkflow(r.workflow_id, 'cpu_memory_usage');
-        }
+        const reason = cpuMemoryFireReason({
+          cpu,
+          usedPct,
+          cpuThreshold: Number(c['cpuPercent'] ?? 90),
+          memThreshold: Number(c['memPercent'] ?? 90),
+          lastCpu: this.lastCpu,
+          lastMem: this.lastMem,
+        });
+        if (reason) void this.engine.runWorkflow(r.workflow_id, 'cpu_memory_usage');
       }
 
       this.lastCpu = cpu;
@@ -385,14 +376,11 @@ export class TriggerManager {
         } catch {
           continue;
         }
-        const need = Math.max(1, Number(c['idleSeconds'] ?? 300));
         const idleSec = powerMonitor.getSystemIdleTime();
-        if (idleSec >= need) {
-          const last = this.lastIdleFire.get(r.workflow_id) ?? 0;
-          if (Date.now() - last > 60_000) {
-            this.lastIdleFire.set(r.workflow_id, Date.now());
-            void this.engine.runWorkflow(r.workflow_id, 'idle_trigger');
-          }
+        const now = Date.now();
+        if (idleShouldFire(idleSec, c['idleSeconds'], this.lastIdleFire.get(r.workflow_id) ?? 0, now)) {
+          this.lastIdleFire.set(r.workflow_id, now);
+          void this.engine.runWorkflow(r.workflow_id, 'idle_trigger');
         }
       }
 
@@ -411,15 +399,13 @@ export class TriggerManager {
         } catch {
           continue;
         }
-        const th = Number(c['threshold'] ?? 85);
-        const below = String(c['comparison'] ?? 'above').toLowerCase() === 'below';
-        const ok = below ? usedPct <= th : usedPct >= th;
-        if (ok) {
-          const last = this.lastMemTriggerFire.get(r.workflow_id) ?? 0;
-          if (Date.now() - last > 30_000) {
-            this.lastMemTriggerFire.set(r.workflow_id, Date.now());
-            void this.engine.runWorkflow(r.workflow_id, 'memory_trigger');
-          }
+        const now = Date.now();
+        if (
+          memoryThresholdMet(usedPct, c['threshold'], c['comparison']) &&
+          cooledDown(this.lastMemTriggerFire.get(r.workflow_id) ?? 0, now, 30_000)
+        ) {
+          this.lastMemTriggerFire.set(r.workflow_id, now);
+          void this.engine.runWorkflow(r.workflow_id, 'memory_trigger');
         }
       }
 
@@ -431,20 +417,66 @@ export class TriggerManager {
         usbN = this.lastUsbCount ?? 0;
       }
 
+      let audioN = 0;
+      try {
+        const audio = await si.audio();
+        audioN = Array.isArray(audio) ? audio.length : 0;
+      } catch {
+        audioN = 0;
+      }
+
       const deviceTrigRows = this.db
         .prepare(
-          `SELECT DISTINCT w.id as workflow_id FROM workflows w
+          `SELECT w.id as workflow_id, n.id as node_id, n.config FROM workflows w
            JOIN workflow_nodes n ON n.workflow_id = w.id
            WHERE w.enabled = 1 AND n.node_type = 'trigger' AND n.kind = 'device_trigger'`
         )
-        .all() as { workflow_id: string }[];
+        .all() as { workflow_id: string; node_id: string; config: string }[];
 
-      if (this.lastUsbCount != null && usbN !== this.lastUsbCount && deviceTrigRows.length > 0) {
-        for (const r of deviceTrigRows) {
+      for (const r of deviceTrigRows) {
+        let c: Record<string, unknown> = {};
+        try {
+          c = JSON.parse(r.config) as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+        const key = `usbdev:${r.workflow_id}:${r.node_id}`;
+        const audioKey = `audiodev:${r.workflow_id}:${r.node_id}`;
+        const previousUsb = this.lastDeviceCount.has(key) ? (this.lastDeviceCount.get(key) as number) : null;
+        const previousAudio = this.lastDeviceCount.has(audioKey) ? (this.lastDeviceCount.get(audioKey) as number) : null;
+        if (deviceTriggerShouldFire({ deviceType: c['deviceType'], event: c['event'], previousUsb, previousAudio, usb: usbN, audio: audioN })) {
           void this.engine.runWorkflow(r.workflow_id, 'device_trigger');
         }
+        this.lastDeviceCount.set(key, usbN);
+        this.lastDeviceCount.set(audioKey, audioN);
       }
       this.lastUsbCount = usbN;
+
+      const connectedRows = this.db
+        .prepare(
+          `SELECT w.id as workflow_id, n.id as node_id, n.config FROM workflows w
+           JOIN workflow_nodes n ON n.workflow_id = w.id
+           WHERE w.enabled = 1 AND n.node_type = 'trigger' AND n.kind = 'device_connected'`
+        )
+        .all() as { workflow_id: string; node_id: string; config: string }[];
+
+      for (const r of connectedRows) {
+        let c: Record<string, unknown> = {};
+        try {
+          c = JSON.parse(r.config) as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+        const device = String(c['device'] ?? 'audio').trim().toLowerCase();
+        const next = device === 'usb' ? usbN : audioN;
+        const key = `connected:${r.workflow_id}:${r.node_id}`;
+        const previous = this.lastDeviceCount.has(key) ? (this.lastDeviceCount.get(key) as number) : null;
+        if (deviceConnectedShouldFire(previous, next)) {
+          void this.engine.runWorkflow(r.workflow_id, 'device_connected');
+          this.recordTriggerFire(r.workflow_id, r.node_id);
+        }
+        this.lastDeviceCount.set(key, next);
+      }
 
       const processExitRows = this.db
         .prepare(
@@ -462,7 +494,7 @@ export class TriggerManager {
         const running = await this.isProcessRunning(needle);
         const key = `exit:${r.workflow_id}:${r.node_id}`;
         const was = this.processExitWasRunning.get(key) ?? false;
-        if (!running && was) {
+        if (processExitShouldFire(was, running)) {
           void this.engine.runWorkflow(r.workflow_id, 'process_exit');
           this.recordTriggerFire(r.workflow_id, r.node_id);
         }
@@ -471,20 +503,54 @@ export class TriggerManager {
 
       const clipboardRows = this.db
         .prepare(
-          `SELECT DISTINCT w.id as workflow_id FROM workflows w
+          `SELECT w.id as workflow_id, n.config FROM workflows w
            JOIN workflow_nodes n ON n.workflow_id = w.id
            WHERE w.enabled = 1 AND n.node_type = 'trigger' AND n.kind = 'clipboard_monitor'`
         )
-        .all() as { workflow_id: string }[];
+        .all() as { workflow_id: string; config: string }[];
 
       if (clipboardRows.length > 0) {
         const current = clipboard.readText();
-        if (current !== this.lastClipboardText) {
-          this.lastClipboardText = current;
-          for (const r of clipboardRows) {
+        const fired = new Set<string>();
+        for (const r of clipboardRows) {
+          let filter = '';
+          try {
+            filter = String((JSON.parse(r.config) as Record<string, unknown>)['filter'] ?? '');
+          } catch {
+            /* no filter */
+          }
+          if (clipboardShouldFire(this.lastClipboardText, current, filter) && !fired.has(r.workflow_id)) {
+            fired.add(r.workflow_id);
             void this.engine.runWorkflow(r.workflow_id, 'clipboard_monitor');
           }
         }
+        this.lastClipboardText = current;
+      }
+
+      const focusRows = this.db
+        .prepare(
+          `SELECT w.id as workflow_id, n.config FROM workflows w
+           JOIN workflow_nodes n ON n.workflow_id = w.id
+           WHERE w.enabled = 1 AND n.node_type = 'trigger' AND n.kind = 'window_focus'`
+        )
+        .all() as { workflow_id: string; config: string }[];
+
+      if (focusRows.length > 0) {
+        const title = await this.foregroundWindowTitle();
+        const fired = new Set<string>();
+        for (const r of focusRows) {
+          let wanted = '';
+          try {
+            wanted = String((JSON.parse(r.config) as Record<string, unknown>)['windowTitle'] ?? '');
+          } catch {
+            /* no title */
+          }
+          if (windowFocusShouldFire(this.lastWindowTitle, title, wanted) && !fired.has(r.workflow_id)) {
+            fired.add(r.workflow_id);
+            void this.engine.runWorkflow(r.workflow_id, 'window_focus');
+          }
+        }
+        this.lastWindowTitle = title;
       }
 
       const displayRows = this.db
@@ -501,7 +567,7 @@ export class TriggerManager {
           const graphics = await si.graphics();
           dispCount = (graphics.displays ?? []).length;
         } catch { /* ignore */ }
-        if (this.lastDisplayCount !== null && dispCount !== this.lastDisplayCount) {
+        if (displayShouldFire(this.lastDisplayCount, dispCount)) {
           for (const r of displayRows) {
             void this.engine.runWorkflow(r.workflow_id, 'display_change');
           }
@@ -520,7 +586,7 @@ export class TriggerManager {
     const job = schedule.scheduleJob('*/5 * * * *', async () => {
       try {
         const wifi = await si.wifiNetworks();
-        const match = expectedSsid ? wifi.some((w) => w.ssid === expectedSsid) : wifi.length > 0;
+        const match = networkMatches(wifi.map((w) => w.ssid), expectedSsid);
         if (match) void this.engine.runWorkflow(workflowId, 'network_change');
       } catch {
         /* ignore */
@@ -553,5 +619,29 @@ export class TriggerManager {
     this.lastMemTriggerFire.clear();
     this.lastPowerEventFire.clear();
     this.appLaunchWasRunning.clear();
+    this.processExitWasRunning.clear();
+    this.lastDeviceCount.clear();
+    this.lastClipboardText = null;
+    this.lastDisplayCount = null;
+    this.lastWindowTitle = null;
+  }
+
+  private async foregroundWindowTitle(): Promise<string> {
+    if (process.platform !== 'win32') return '';
+    try {
+      const { stdout } = await execFileAsync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          "Add-Type -TypeDefinition 'using System; using System.Text; using System.Runtime.InteropServices; public class TfFg { [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow(); [DllImport(\"user32.dll\")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count); }'; $h=[TfFg]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder 512; [void][TfFg]::GetWindowText($h,$sb,$sb.Capacity); $sb.ToString()",
+        ],
+        { windowsHide: true, timeout: 4000 }
+      );
+      return String(stdout).trim();
+    } catch {
+      return '';
+    }
   }
 }

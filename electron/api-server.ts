@@ -6,6 +6,7 @@ import type { AutomationEngine } from './engine/automation-engine';
 import type { TriggerManager } from './engine/trigger-manager';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { isLocalDevRestApiPlaceholder } from './dev-placeholders';
+import { webhookAuthorization, webhookSecretFromHeaders } from './webhook-auth';
 import { findApiKeyByToken, readSecretSetting } from './secret-store';
 
 /** Constant-time comparison so token checks do not leak content via timing. */
@@ -270,22 +271,17 @@ export function startApiServer(
         )
         .all(workflowId) as { config: string }[];
 
-      if (webhookNodes.length === 0) {
-        res.status(404).json({ error: 'No enabled webhook trigger found for this workflow' });
-        return;
-      }
-
-      for (const node of webhookNodes) {
-        let cfg: Record<string, unknown> = {};
-        try { cfg = JSON.parse(node.config) as Record<string, unknown>; } catch { /* no config */ }
-        const secret = String(cfg['secret'] ?? '').trim();
-        if (secret) {
-          const provided = String((req.headers['x-webhook-secret'] ?? req.headers['authorization'] ?? '')).replace(/^Bearer\s+/i, '').trim();
-          if (provided !== secret) {
-            res.status(401).json({ error: 'Invalid webhook secret' });
-            return;
-          }
+      const configs = webhookNodes.map((node) => {
+        try {
+          return JSON.parse(node.config) as Record<string, unknown>;
+        } catch {
+          return {};
         }
+      });
+      const auth = webhookAuthorization(configs, webhookSecretFromHeaders(req.headers));
+      if (!auth.ok) {
+        res.status(auth.status).json({ error: auth.error });
+        return;
       }
 
       void engine.runWorkflow(String(workflowId), 'webhook_trigger');

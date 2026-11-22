@@ -48,7 +48,8 @@ export function assertLoopbackChatEndpoint(endpointUrl: string): void {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error('Local AI URL must use http or https');
   }
-  const host = url.hostname.toLowerCase();
+  // Node reports an IPv6 hostname with brackets (`[::1]`), so strip them before comparing.
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   const ok = host === '127.0.0.1' || host === 'localhost' || host === '::1';
   if (!ok) {
     throw new Error('Local AI must use a loopback host (127.0.0.1, localhost, or ::1)');

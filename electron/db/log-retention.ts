@@ -14,7 +14,7 @@ export function purgeOldLogs(db: Database.Database): void {
     const days = parseInt(raw, 10);
     if (!Number.isFinite(days) || days <= 0) return;
 
-    db.prepare(`DELETE FROM execution_logs WHERE created_at < datetime('now', '-' || ? || ' days')`).run(days);
+    db.prepare(`DELETE FROM execution_logs WHERE started_at < datetime('now', '-' || ? || ' days')`).run(days);
   } catch (e) {
     console.error('[taskforge] purgeOldLogs failed', e);
   }
