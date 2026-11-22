@@ -1,6 +1,7 @@
+import type { Server } from 'node:http';
 import express from 'express';
 import cors from 'cors';
-import { app as electronApp } from 'electron';
+import { isPackagedBuild } from './runtime-mode';
 import type Database from 'better-sqlite3';
 import type { AutomationEngine } from './engine/automation-engine';
 import type { TriggerManager } from './engine/trigger-manager';
@@ -93,7 +94,7 @@ export function startApiServer(
   engine: AutomationEngine,
   triggers: TriggerManager,
   port = 38474
-): { stop: () => void } {
+): { stop: () => void; server: Server } {
   const app = express();
   app.use(
     cors({
@@ -123,12 +124,16 @@ export function startApiServer(
   };
 
   app.use((req, res, next) => {
+    if (req.path.startsWith('/webhooks/')) {
+      next();
+      return;
+    }
     const auth = req.headers.authorization ?? '';
     const m = /^Bearer\s+(.+)$/i.exec(auth);
     const bearer = m?.[1]?.trim() ?? '';
     const r = req as ApiRequest;
 
-    if (!electronApp.isPackaged && isLocalDevRestApiPlaceholder(bearer)) {
+    if (!isPackagedBuild() && isLocalDevRestApiPlaceholder(bearer)) {
       r.tfScopes = [SCOPE_ALL];
       next();
       return;
@@ -296,10 +301,13 @@ export function startApiServer(
   });
 
   const server = app.listen(port, '127.0.0.1', () => {
-    console.log(`TaskForge API listening on http://127.0.0.1:${port}`);
+    const addr = server.address();
+    const bound = typeof addr === 'object' && addr ? addr.port : port;
+    console.log(`TaskForge API listening on http://127.0.0.1:${bound}`);
   });
 
   return {
+    server,
     stop: () => {
       server.close();
     },

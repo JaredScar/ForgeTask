@@ -24,6 +24,7 @@ import { TeamPageComponent } from './team/team-page.component';
 import { TriggersPageComponent } from './triggers/triggers-page.component';
 import { VariablesPageComponent } from './variables/variables-page.component';
 import { WorkflowsPageComponent } from './workflows/workflows-page.component';
+import { ConfirmDialogService } from '../core/services/confirm-dialog.service';
 import { ToastService } from '../core/services/toast.service';
 
 vi.mock('chart.js', () => ({
@@ -70,7 +71,32 @@ function fakeIpc(options?: { team?: Array<{ is_self: number; role: string; displ
       settings: { get: vi.fn(async () => null), set: vi.fn(async () => ({})), resetPreferences: vi.fn(async () => ({})) },
       workflows: {
         list: vi.fn(async () => [workflow]),
-        get: vi.fn(async () => ({ workflow, nodes: [], edges: [] })),
+        get: vi.fn(async () => ({
+          workflow,
+          nodes: [
+            {
+              id: 'n1',
+              workflow_id: 'wf-1',
+              node_type: 'trigger',
+              kind: 'system_startup',
+              config: '{"label":"On login"}',
+              position_x: 0,
+              position_y: 0,
+              sort_order: 0,
+            },
+            {
+              id: 'n2',
+              workflow_id: 'wf-1',
+              node_type: 'action',
+              kind: 'show_notification',
+              config: '{"title":"Hi","body":"There","label":"Notify"}',
+              position_x: 0,
+              position_y: 0,
+              sort_order: 1,
+            },
+          ],
+          edges: [{ id: 'e1', source_node_id: 'n1', target_node_id: 'n2', branch: null }],
+        })),
         create: vi.fn(async () => 'wf-new'),
         createFromStarter: vi.fn(async () => 'wf-starter'),
         update: vi.fn(async () => true),
@@ -371,5 +397,86 @@ describe('app screens', () => {
     empty.detectChanges();
     expect(empty.nativeElement.textContent).toContain('Nothing here');
     expect(empty.nativeElement.querySelector('a')?.getAttribute('href')).toBe('/workflows');
+  });
+
+  it('deletes a workflow after the confirm dialog is accepted', async () => {
+    const { fixture, ipc } = await mount(WorkflowsPageComponent);
+    const remove = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (button) => (button as HTMLButtonElement).textContent?.trim() === 'Delete'
+    ) as HTMLButtonElement;
+    remove.click();
+    const confirm = TestBed.inject(ConfirmDialogService);
+    await vi.waitFor(() => expect(confirm.active()?.title).toBe('Delete workflow'));
+    confirm.respond(true);
+    await vi.waitFor(() => expect(ipc.api.workflows.delete).toHaveBeenCalledWith('wf-1'));
+    expect(TestBed.inject(ToastService).items().some((item) => item.message === 'Workflow deleted')).toBe(true);
+  });
+
+  it('saves the open workflow from the builder', async () => {
+    const { fixture, ipc } = await mount(BuilderPageComponent);
+    const save = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (button) => (button as HTMLButtonElement).textContent?.trim() === 'Save'
+    ) as HTMLButtonElement;
+    save.click();
+    await vi.waitFor(() => expect(ipc.api.workflows.update).toHaveBeenCalled());
+    const payload = (ipc.api.workflows.update.mock.calls as unknown as Array<[{ id: string; draft: boolean; nodes: unknown[] }]>)[0]?.[0];
+    if (!payload) throw new Error('save payload missing');
+    expect(payload.id).toBe('wf-1');
+    expect(payload.draft).toBe(false);
+    expect(payload.nodes).toHaveLength(2);
+    await vi.waitFor(() =>
+      expect(TestBed.inject(ToastService).items().some((item) => item.message === 'Workflow saved')).toBe(true)
+    );
+  });
+
+  it('saves settings preferences from the settings form', async () => {
+    const { fixture, ipc } = await mount(SettingsPageComponent);
+    const save = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (button) => (button as HTMLButtonElement).textContent?.trim() === 'Save preferences'
+    ) as HTMLButtonElement;
+    save.click();
+    await vi.waitFor(() => expect(ipc.api.settings.set).toHaveBeenCalledWith('ui_theme', 'dark'));
+    expect(ipc.api.settings.set).toHaveBeenCalledWith('log_retention_days', '30');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Preferences saved');
+  });
+
+  it('exports execution logs as CSV', async () => {
+    const { fixture, ipc } = await mount(LogsPageComponent);
+    const exportCsv = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (button) => (button as HTMLButtonElement).textContent?.trim() === 'Export CSV'
+    ) as HTMLButtonElement;
+    exportCsv.click();
+    await vi.waitFor(() => expect(ipc.api.logs.export).toHaveBeenCalledWith('csv'));
+    expect(TestBed.inject(ToastService).items().some((item) => item.message === 'Exported to logs.csv')).toBe(true);
+  });
+
+  it('invites a teammate from the team page', async () => {
+    const { fixture, ipc } = await mount(TeamPageComponent);
+    const open = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (button) => (button as HTMLButtonElement).textContent?.includes('Invite Member')
+    ) as HTMLButtonElement;
+    open.click();
+    fixture.detectChanges();
+    const inputs = fixture.nativeElement.querySelectorAll('input') as NodeListOf<HTMLInputElement>;
+    inputs[0].value = 'Ada Lovelace';
+    inputs[0].dispatchEvent(new Event('input'));
+    inputs[1].value = 'ada@example.com';
+    inputs[1].dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    const add = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (button) => (button as HTMLButtonElement).textContent?.trim() === 'Add member'
+    ) as HTMLButtonElement;
+    add.click();
+    await vi.waitFor(() =>
+      expect(ipc.api.team.invite).toHaveBeenCalledWith({
+        display_name: 'Ada Lovelace',
+        email: 'ada@example.com',
+        role: 'Editor',
+      })
+    );
+    await vi.waitFor(() =>
+      expect(TestBed.inject(ToastService).items().some((item) => item.message === 'Member added')).toBe(true)
+    );
   });
 });

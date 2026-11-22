@@ -12,6 +12,19 @@ import { powerMonitor } from 'electron';
 const execFileAsync = promisify(execFile);
 
 type TriggerRow = { workflow_id: string; node_id: string; kind: string; config: string };
+
+/** OS readings for one poll cycle. Tests supply these so the poll loop never touches the machine. */
+export type PollReadings = {
+  processRunning: (needle: string) => boolean;
+  cpu: number;
+  usedPct: number;
+  idleSec: number;
+  usb: number;
+  audio: number;
+  clipboard: string;
+  windowTitle: string;
+  displayCount: number;
+};
 import type { AutomationEngine } from './automation-engine';
 import {
   appLaunchShouldFire,
@@ -40,6 +53,8 @@ export class TriggerManager {
   private readonly watchers = new Map<string, Watcher>();
   private readonly intervalTimers = new Map<string, ReturnType<typeof setInterval>>();
   private readonly powerCleanups: Array<() => void> = [];
+  private readonly powerHandlers = new Map<string, () => void>();
+  private pollReadings: PollReadings | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private lastCpu = 0;
   private lastMem = 0;
@@ -78,6 +93,33 @@ export class TriggerManager {
   /** True after triggers have been loaded at least once (automation engine is scheduling). */
   isEngineReady(): boolean {
     return this.engineReady;
+  }
+
+  /** One poll cycle using supplied readings. The timer calls the same method with live OS data. */
+  async pollWithReadings(readings: PollReadings): Promise<void> {
+    this.pollReadings = readings;
+    try {
+      await this.pollResources();
+    } finally {
+      this.pollReadings = null;
+    }
+  }
+
+  /** Same check the network cron job runs. Pass `ssids` to avoid scanning Wi-Fi. */
+  async evaluateNetwork(workflowId: string, expectedSsid: string, ssids?: string[]): Promise<void> {
+    try {
+      const names = ssids ?? (await si.wifiNetworks()).map((w) => w.ssid);
+      if (networkMatches(names, expectedSsid)) {
+        void this.engine.runWorkflow(workflowId, 'network_change');
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Delivers a power event to the listeners loaded by the last reload. */
+  emitPowerEvent(event: string): void {
+    this.powerHandlers.get(event)?.();
   }
 
   reloadFromDatabase(): void {
@@ -221,6 +263,7 @@ export class TriggerManager {
       }
     }
     this.powerCleanups.length = 0;
+    this.powerHandlers.clear();
 
     const buckets = new Map<string, { workflow_id: string; node_id: string }[]>();
     for (const r of rows) {
@@ -251,10 +294,13 @@ export class TriggerManager {
           this.recordTriggerFire(t.workflow_id, t.node_id);
         }
       };
-      powerMonitor.on(ev as any, handler);
-      this.powerCleanups.push(() => {
-        powerMonitor.off(ev as any, handler);
-      });
+      this.powerHandlers.set(ev, handler);
+      if (typeof powerMonitor?.on === 'function') {
+        powerMonitor.on(ev as never, handler);
+        this.powerCleanups.push(() => {
+          powerMonitor.off(ev as never, handler);
+        });
+      }
     }
   }
 
@@ -317,7 +363,9 @@ export class TriggerManager {
         }
         const procNeedle = String(c['process'] ?? '');
         if (!procNeedle.trim()) continue;
-        const running = await this.isProcessRunning(procNeedle);
+        const running = this.pollReadings
+          ? this.pollReadings.processRunning(procNeedle)
+          : await this.isProcessRunning(procNeedle);
         const key = `${r.workflow_id}:${r.node_id}`;
         const was = this.appLaunchWasRunning.get(key) ?? false;
         if (appLaunchShouldFire(was, running)) {
@@ -327,10 +375,17 @@ export class TriggerManager {
         this.appLaunchWasRunning.set(key, running);
       }
 
-      const load = await si.currentLoad();
-      const mem = await si.mem();
-      const cpu = load.currentLoad ?? 0;
-      const usedPct = mem.total ? (mem.used / mem.total) * 100 : 0;
+      let cpu = 0;
+      let usedPct = 0;
+      if (this.pollReadings) {
+        cpu = this.pollReadings.cpu;
+        usedPct = this.pollReadings.usedPct;
+      } else {
+        const load = await si.currentLoad();
+        const mem = await si.mem();
+        cpu = load.currentLoad ?? 0;
+        usedPct = mem.total ? (mem.used / mem.total) * 100 : 0;
+      }
 
       const cpuRows = this.db
         .prepare(
@@ -376,7 +431,7 @@ export class TriggerManager {
         } catch {
           continue;
         }
-        const idleSec = powerMonitor.getSystemIdleTime();
+        const idleSec = this.pollReadings ? this.pollReadings.idleSec : powerMonitor.getSystemIdleTime();
         const now = Date.now();
         if (idleShouldFire(idleSec, c['idleSeconds'], this.lastIdleFire.get(r.workflow_id) ?? 0, now)) {
           this.lastIdleFire.set(r.workflow_id, now);
@@ -410,19 +465,23 @@ export class TriggerManager {
       }
 
       let usbN = 0;
-      try {
-        const usb = await si.usb();
-        usbN = Array.isArray(usb) ? usb.length : 0;
-      } catch {
-        usbN = this.lastUsbCount ?? 0;
-      }
-
       let audioN = 0;
-      try {
-        const audio = await si.audio();
-        audioN = Array.isArray(audio) ? audio.length : 0;
-      } catch {
-        audioN = 0;
+      if (this.pollReadings) {
+        usbN = this.pollReadings.usb;
+        audioN = this.pollReadings.audio;
+      } else {
+        try {
+          const usb = await si.usb();
+          usbN = Array.isArray(usb) ? usb.length : 0;
+        } catch {
+          usbN = this.lastUsbCount ?? 0;
+        }
+        try {
+          const audio = await si.audio();
+          audioN = Array.isArray(audio) ? audio.length : 0;
+        } catch {
+          audioN = 0;
+        }
       }
 
       const deviceTrigRows = this.db
@@ -491,7 +550,9 @@ export class TriggerManager {
         try { c = JSON.parse(r.config) as Record<string, unknown>; } catch { continue; }
         const needle = String(c['process'] ?? '').trim();
         if (!needle) continue;
-        const running = await this.isProcessRunning(needle);
+        const running = this.pollReadings
+          ? this.pollReadings.processRunning(needle)
+          : await this.isProcessRunning(needle);
         const key = `exit:${r.workflow_id}:${r.node_id}`;
         const was = this.processExitWasRunning.get(key) ?? false;
         if (processExitShouldFire(was, running)) {
@@ -510,7 +571,7 @@ export class TriggerManager {
         .all() as { workflow_id: string; config: string }[];
 
       if (clipboardRows.length > 0) {
-        const current = clipboard.readText();
+        const current = this.pollReadings ? this.pollReadings.clipboard : clipboard.readText();
         const fired = new Set<string>();
         for (const r of clipboardRows) {
           let filter = '';
@@ -536,7 +597,7 @@ export class TriggerManager {
         .all() as { workflow_id: string; config: string }[];
 
       if (focusRows.length > 0) {
-        const title = await this.foregroundWindowTitle();
+        const title = this.pollReadings ? this.pollReadings.windowTitle : await this.foregroundWindowTitle();
         const fired = new Set<string>();
         for (const r of focusRows) {
           let wanted = '';
@@ -563,10 +624,14 @@ export class TriggerManager {
 
       if (displayRows.length > 0) {
         let dispCount = 0;
-        try {
-          const graphics = await si.graphics();
-          dispCount = (graphics.displays ?? []).length;
-        } catch { /* ignore */ }
+        if (this.pollReadings) {
+          dispCount = this.pollReadings.displayCount;
+        } else {
+          try {
+            const graphics = await si.graphics();
+            dispCount = (graphics.displays ?? []).length;
+          } catch { /* ignore */ }
+        }
         if (displayShouldFire(this.lastDisplayCount, dispCount)) {
           for (const r of displayRows) {
             void this.engine.runWorkflow(r.workflow_id, 'display_change');
@@ -583,14 +648,8 @@ export class TriggerManager {
     this.ensurePollLoop();
     const key = `net:${workflowId}`;
     if (this.jobs.has(key)) return;
-    const job = schedule.scheduleJob('*/5 * * * *', async () => {
-      try {
-        const wifi = await si.wifiNetworks();
-        const match = networkMatches(wifi.map((w) => w.ssid), expectedSsid);
-        if (match) void this.engine.runWorkflow(workflowId, 'network_change');
-      } catch {
-        /* ignore */
-      }
+    const job = schedule.scheduleJob('*/5 * * * *', () => {
+      void this.evaluateNetwork(workflowId, expectedSsid);
     });
     if (job) this.jobs.set(key, job);
   }

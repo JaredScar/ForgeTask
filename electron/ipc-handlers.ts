@@ -1,5 +1,6 @@
-import { app, BrowserWindow, dialog, type OpenDialogOptions } from 'electron';
+import { app, type BrowserWindow, type OpenDialogOptions } from 'electron';
 import { ipcHandle } from './ipc-handle';
+import { pickOpenPath, pickSavePath } from './native-dialogs';
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
@@ -590,7 +591,7 @@ export function registerIpcHandlers(
             defaultPath: 'taskforge-logs.csv',
             filters: [{ name: 'CSV', extensions: ['csv'] }],
           };
-    const { filePath } = win ? await dialog.showSaveDialog(win, dlgOpts) : await dialog.showSaveDialog(dlgOpts);
+    const filePath = await pickSavePath(win, dlgOpts);
     if (!filePath) return null;
     if (format === 'json') {
       const stepStmt = db.prepare(
@@ -652,9 +653,7 @@ export function registerIpcHandlers(
       properties: ['openFile'],
       filters,
     };
-    const { canceled, filePaths } = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
-    if (canceled || !filePaths?.length) return null;
-    return filePaths[0] ?? null;
+    return pickOpenPath(win, opts);
   });
 
   ipcHandle('variables:list', () => {
@@ -1047,7 +1046,7 @@ export function registerIpcHandlers(
       defaultPath: 'taskforge-audit.csv',
       filters: [{ name: 'CSV', extensions: ['csv'] }],
     };
-    const { filePath } = win ? await dialog.showSaveDialog(win, dlgOpts) : await dialog.showSaveDialog(dlgOpts);
+    const filePath = await pickSavePath(win, dlgOpts);
     if (!filePath) return null;
     const header = 'id,user_id,action,resource,ip,status,created_at\n';
     const body = (rows as Record<string, unknown>[])
@@ -1229,7 +1228,7 @@ export function registerIpcHandlers(
       defaultPath: 'taskforge-export.zip',
       filters: [{ name: 'ZIP', extensions: ['zip'] }],
     };
-    const { filePath } = win ? await dialog.showSaveDialog(win, dlgOpts) : await dialog.showSaveDialog(dlgOpts);
+    const filePath = await pickSavePath(win, dlgOpts);
     if (!filePath) return null;
 
     const exportPayload = {
@@ -1264,20 +1263,18 @@ export function registerIpcHandlers(
 
   ipcHandle('data:importZip', async () => {
     const win = getWin();
-    const { filePaths, canceled } = win
-      ? await dialog.showOpenDialog(win, {
-          properties: ['openFile'],
-          filters: [{ name: 'ZIP', extensions: ['zip'] }],
-        })
-      : await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'ZIP', extensions: ['zip'] }] });
-    if (canceled || !filePaths?.[0]) {
+    const zipPath = await pickOpenPath(win, {
+      properties: ['openFile'],
+      filters: [{ name: 'ZIP', extensions: ['zip'] }],
+    });
+    if (!zipPath) {
       return { ok: false as const, error: 'cancelled' };
     }
-    const buf = await fs.promises.readFile(filePaths[0]);
+    const buf = await fs.promises.readFile(zipPath);
     const result = importDataFromZipBuffer(db, buf);
     if (!result.ok) return result;
     triggers.reloadFromDatabase();
-    writeAuditLog(db, 'data.import', `zip:${filePaths[0]}`);
+    writeAuditLog(db, 'data.import', `zip:${zipPath}`);
     return result;
   });
 
@@ -1290,22 +1287,20 @@ export function registerIpcHandlers(
         { name: 'All files', extensions: ['*'] },
       ],
     };
-    const { filePaths, canceled } = win
-      ? await dialog.showOpenDialog(win, dialogOpts)
-      : await dialog.showOpenDialog(dialogOpts);
-    if (canceled || !filePaths?.[0]) {
+    const xmlPath = await pickOpenPath(win, dialogOpts);
+    if (!xmlPath) {
       return { ok: false as const, error: 'cancelled' };
     }
-    const buf = await fs.promises.readFile(filePaths[0]);
+    const buf = await fs.promises.readFile(xmlPath);
     const result = importTaskSchedulerXmlBuffer(db, buf);
     if (!result.ok) return result;
     triggers.reloadFromDatabase();
-    writeAuditLog(db, 'data.import_task_scheduler', `xml:${filePaths[0]} imported=${result.imported}`);
+    writeAuditLog(db, 'data.import_task_scheduler', `xml:${xmlPath} imported=${result.imported}`);
     return result;
   });
 
   ipcHandle('app:getPaths', () => ({
-    userData: app.getPath('userData'),
+    userData: app?.getPath?.('userData') ?? '',
   }));
 
   ipcHandle('app:getStats', async () => {
