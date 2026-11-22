@@ -109,12 +109,26 @@ export async function runDownloadFile(config: Record<string, unknown>): Promise<
   return { ok: true, bytes };
 }
 
-function parseMac(mac: string): Buffer {
+/** Magic packet: 6 bytes of 0xff followed by the MAC address repeated 16 times. Does not transmit. */
+export function buildWakeOnLanPacket(mac: string): Buffer {
   const hex = mac.replace(/[:-]/g, '');
   if (hex.length !== 12 || !/^[0-9a-fA-F]{12}$/.test(hex)) {
     throw new Error('MAC address must be 12 hex digits (e.g. AA:BB:CC:DD:EE:FF)');
   }
-  return Buffer.from(hex, 'hex');
+  const macBuf = Buffer.from(hex, 'hex');
+  const packet = Buffer.alloc(6 + 16 * 6);
+  packet.fill(0xff, 0, 6);
+  for (let i = 6; i < packet.length; i += 6) {
+    macBuf.copy(packet, i);
+  }
+  return packet;
+}
+
+export function screenshotCaptureSize(config: Record<string, unknown>): { width: number; height: number } {
+  return {
+    width: Math.min(7680, Math.max(640, Number(config['width'] ?? 1920))),
+    height: Math.min(4320, Math.max(480, Number(config['height'] ?? 1080))),
+  };
 }
 
 export function runWakeOnLan(config: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
@@ -123,17 +137,11 @@ export function runWakeOnLan(config: Record<string, unknown>): Promise<{ ok: boo
   const port = Math.min(65535, Math.max(1, Number(config['port'] ?? 9)));
   if (!mac) return Promise.resolve({ ok: false, error: 'Missing macAddress' });
 
-  let macBuf: Buffer;
+  let packet: Buffer;
   try {
-    macBuf = parseMac(mac);
+    packet = buildWakeOnLanPacket(mac);
   } catch (e) {
     return Promise.resolve({ ok: false, error: e instanceof Error ? e.message : String(e) });
-  }
-
-  const packet = Buffer.alloc(6 + 16 * 6);
-  packet.fill(0xff, 0, 6);
-  for (let i = 6; i < packet.length; i += 6) {
-    macBuf.copy(packet, i);
   }
 
   return new Promise((resolve) => {
@@ -199,8 +207,7 @@ export async function runScreenshotSave(config: Record<string, unknown>): Promis
   const outPath = String(config['path'] ?? '').trim();
   if (!outPath) return { ok: false, error: 'Missing path' };
 
-  const width = Math.min(7680, Math.max(640, Number(config['width'] ?? 1920)));
-  const height = Math.min(4320, Math.max(480, Number(config['height'] ?? 1080)));
+  const { width, height } = screenshotCaptureSize(config);
 
   try {
     const sources = await desktopCapturer.getSources({

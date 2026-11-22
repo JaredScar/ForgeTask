@@ -6,47 +6,64 @@ import { Buffer } from 'node:buffer';
  * - Keyboard: `{ "mode": "keyboard", "text": "hello{ENTER}" }` — SendKeys syntax
  * - Mouse click: `{ "mode": "click", "x": 100, "y": 200, "button": "left" }`
  */
-export async function runInputSimulation(config: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
-  if (process.platform !== 'win32') {
+/** Builds the PowerShell that would run. Callers execute it only when the plan is ok. */
+export function inputSimulationPlan(
+  config: Record<string, unknown>,
+  platform: NodeJS.Platform = process.platform
+): { ok: false; error: string } | { ok: true; script: string } {
+  if (platform !== 'win32') {
     return { ok: false, error: 'input_simulation is only implemented on Windows in this build' };
   }
 
   const mode = String(config['mode'] ?? 'keyboard').toLowerCase();
   if (mode === 'click') {
-    return runMouseClick(config);
+    const x = Math.round(Number(config['x'] ?? 0));
+    const y = Math.round(Number(config['y'] ?? 0));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return { ok: false, error: 'Click mode needs numeric x and y coordinates' };
+    }
+    const button = String(config['button'] ?? 'left').toLowerCase();
+    const downFlag =
+      button === 'right' ? 'MOUSEEVENTF_RIGHTDOWN' : button === 'middle' ? 'MOUSEEVENTF_MIDDLEDOWN' : 'MOUSEEVENTF_LEFTDOWN';
+    const upFlag =
+      button === 'right' ? 'MOUSEEVENTF_RIGHTUP' : button === 'middle' ? 'MOUSEEVENTF_MIDDLEUP' : 'MOUSEEVENTF_LEFTUP';
+    return {
+      ok: true,
+      script: [
+        `[TfMouse]::SetCursorPos(${x}, ${y}) | Out-Null`,
+        `[TfMouse]::mouse_event([TfMouse]::${downFlag}, 0, 0, 0, 0)`,
+        `[TfMouse]::mouse_event([TfMouse]::${upFlag}, 0, 0, 0, 0)`,
+      ].join('\n'),
+    };
   }
-  return runKeyboardInput(config);
-}
 
-async function runKeyboardInput(config: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
   const text = String(config['text'] ?? config['keys'] ?? '').trim();
   if (!text) return { ok: false, error: 'Keyboard mode needs non-empty text (SendKeys syntax)' };
-
   const b64 = Buffer.from(text, 'utf8').toString('base64');
-  const ps = [
-    '$ErrorActionPreference = "Stop"',
-    'Add-Type -AssemblyName System.Windows.Forms',
-    `$raw = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${b64}'))`,
-    '[System.Windows.Forms.SendKeys]::SendWait($raw)',
-  ].join('; ');
-
-  return runPowerShell(ps);
+  return {
+    ok: true,
+    script: [
+      '$ErrorActionPreference = "Stop"',
+      'Add-Type -AssemblyName System.Windows.Forms',
+      `$raw = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${b64}'))`,
+      '[System.Windows.Forms.SendKeys]::SendWait($raw)',
+    ].join('; '),
+  };
 }
 
-async function runMouseClick(config: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
-  const x = Math.round(Number(config['x'] ?? 0));
-  const y = Math.round(Number(config['y'] ?? 0));
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return { ok: false, error: 'Click mode needs numeric x and y coordinates' };
+export async function runInputSimulation(config: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+  const plan = inputSimulationPlan(config);
+  if (!plan.ok) return plan;
+  if (String(config['mode'] ?? 'keyboard').toLowerCase() === 'click') {
+    return runPowerShell(mouseClickScript(config));
   }
+  return runPowerShell(plan.script);
+}
 
-  const button = String(config['button'] ?? 'left').toLowerCase();
-  const downFlag =
-    button === 'right' ? 'MOUSEEVENTF_RIGHTDOWN' : button === 'middle' ? 'MOUSEEVENTF_MIDDLEDOWN' : 'MOUSEEVENTF_LEFTDOWN';
-  const upFlag =
-    button === 'right' ? 'MOUSEEVENTF_RIGHTUP' : button === 'middle' ? 'MOUSEEVENTF_MIDDLEUP' : 'MOUSEEVENTF_LEFTUP';
-
-  const ps = [
+function mouseClickScript(config: Record<string, unknown>): string {
+  const plan = inputSimulationPlan(config);
+  const tail = plan.ok ? plan.script : '';
+  return [
     '$ErrorActionPreference = "Stop"',
     'Add-Type @"',
     'using System;',
@@ -62,12 +79,8 @@ async function runMouseClick(config: Record<string, unknown>): Promise<{ ok: boo
     '  public const int MOUSEEVENTF_MIDDLEUP = 0x40;',
     '}',
     '"@',
-    `[TfMouse]::SetCursorPos(${x}, ${y}) | Out-Null`,
-    `[TfMouse]::mouse_event([TfMouse]::${downFlag}, 0, 0, 0, 0)`,
-    `[TfMouse]::mouse_event([TfMouse]::${upFlag}, 0, 0, 0, 0)`,
+    tail,
   ].join('\n');
-
-  return runPowerShell(ps);
 }
 
 function runPowerShell(script: string): Promise<{ ok: boolean; error?: string }> {

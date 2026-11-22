@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { ACTION_PAGE_ADVANCED, ACTION_PAGE_BASIC } from '../../features/actions/actions-page.component';
+import { TRIGGER_PAGE_ADVANCED, TRIGGER_PAGE_BASIC } from '../../features/triggers/triggers-page.component';
 import { defaultActionConfig, defaultConditionConfig, defaultTriggerConfig } from './catalog-defaults';
 import { NODE_CATALOG } from './node-catalog';
+import { schemaForKind } from './node-schemas';
 
 describe('node catalog', () => {
   it('has a unique kind for every entry', () => {
@@ -28,6 +31,21 @@ describe('node catalog', () => {
     expect(tier('branch_if')).toBe('free');
     for (const kind of ['file_change', 'webhook_trigger', 'http_request', 'delay_wait', 'slack_notification']) {
       expect(tier(kind), kind).toBe('pro');
+    }
+  });
+
+  it('gives every catalog kind a config form', () => {
+    for (const entry of NODE_CATALOG) {
+      expect(schemaForKind(entry.kind)?.length, entry.kind).toBeGreaterThan(0);
+    }
+  });
+
+  it('lists every trigger and action on the catalog pages', () => {
+    const triggers = new Set([...TRIGGER_PAGE_BASIC, ...TRIGGER_PAGE_ADVANCED].map((item) => item.kind));
+    const actions = new Set([...ACTION_PAGE_BASIC, ...ACTION_PAGE_ADVANCED].map((item) => item.kind));
+    for (const entry of NODE_CATALOG) {
+      if (entry.nodeType === 'trigger') expect(triggers.has(entry.kind), entry.kind).toBe(true);
+      if (entry.nodeType === 'action') expect(actions.has(entry.kind), entry.kind).toBe(true);
     }
   });
 });

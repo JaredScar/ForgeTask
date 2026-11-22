@@ -17,6 +17,13 @@ void test('interpolateConfigString leaves unknown context tokens unchanged', () 
   assert.equal(out, '{{context.missing}}');
 });
 
+void test('interpolateConfigString keeps quotes and newlines inside JSON', () => {
+  const raw = interpolateConfigString('{"content":"{{context.stdout}}","path":"{{dir}}"}', { dir: 'C:\\work' }, {
+    stdout: 'say "hi"\r\n',
+  });
+  assert.deepEqual(JSON.parse(raw), { content: 'say "hi"\r\n', path: 'C:\\work' });
+});
+
 void test('loadVariableMap reads plaintext variable rows', () => {
   const db = {
     prepare() {

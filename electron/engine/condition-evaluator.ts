@@ -2,10 +2,27 @@ import * as si from 'systeminformation';
 import type { WorkflowNodeRow } from '../types';
 import { interpolateConfigString } from './variable-interpolation';
 
+/** Empty `expected` means any visible network. Otherwise the SSID must match exactly. */
+export function wifiNetworkMatches(ssids: readonly string[], expected: string): boolean {
+  return expected ? ssids.some((ssid) => ssid === expected) : ssids.length > 0;
+}
+
+/** `processName` is matched as a case-insensitive substring of a process name. */
+export function processNameMatches(names: readonly (string | undefined)[], processName: string): boolean {
+  const needle = processName.toLowerCase();
+  return names.some((name) => name?.toLowerCase().includes(needle) === true);
+}
+
+export type ConditionProbe = {
+  wifiNetworks?: () => Promise<Array<{ ssid?: string }>>;
+  processes?: () => Promise<{ list?: Array<{ name?: string }> }>;
+};
+
 export async function evaluateCondition(
   node: WorkflowNodeRow,
   vars: Record<string, string> = {},
-  context: Record<string, string> = {}
+  context: Record<string, string> = {},
+  probe?: ConditionProbe
 ): Promise<{ ok: boolean; reason?: string }> {
   let config: Record<string, unknown>;
   try {
@@ -19,8 +36,11 @@ export async function evaluateCondition(
     case 'wifi_network': {
       try {
         const expected = String(config['ssid'] ?? '');
-        const wifi = await si.wifiNetworks();
-        const ok = expected ? wifi.some((w) => w.ssid === expected) : wifi.length > 0;
+        const wifi = probe?.wifiNetworks ? await probe.wifiNetworks() : await si.wifiNetworks();
+        const ok = wifiNetworkMatches(
+          wifi.map((w) => String(w.ssid ?? '')),
+          expected
+        );
         return ok ? { ok: true } : { ok: false, reason: `WiFi mismatch (expected ${expected})` };
       } catch {
         return { ok: true };
@@ -39,9 +59,12 @@ export async function evaluateCondition(
       return ok ? { ok: true } : { ok: false, reason: 'Outside time window' };
     }
     case 'app_running': {
-      const procName = String(config['process'] ?? '').toLowerCase();
-      const procs = await si.processes();
-      const ok = procs.list.some((p) => p.name?.toLowerCase().includes(procName));
+      const procName = String(config['process'] ?? '');
+      const procs = probe?.processes ? await probe.processes() : await si.processes();
+      const ok = processNameMatches(
+        (procs.list ?? []).map((p) => p.name),
+        procName
+      );
       return ok ? { ok: true } : { ok: false, reason: `Process not running: ${procName}` };
     }
     default:

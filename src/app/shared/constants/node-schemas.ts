@@ -106,6 +106,23 @@ export const NODE_CONFIG_SCHEMAS: Record<string, SchemaField[]> = {
       ],
     },
   ],
+  webhook_trigger: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'secret', label: 'Shared secret', type: 'text' },
+  ],
+  process_exit: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'process', label: 'Process name', type: 'text', placeholder: 'notepad.exe' },
+  ],
+  window_focus: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'windowTitle', label: 'Window title contains', type: 'text' },
+  ],
+  display_change: [{ key: 'label', label: 'Label', type: 'text' }],
+  clipboard_monitor: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'filter', label: 'Text contains (optional)', type: 'text' },
+  ],
 
   wifi_network: [
     { key: 'label', label: 'Label', type: 'text' },
@@ -301,6 +318,34 @@ export const NODE_CONFIG_SCHEMAS: Record<string, SchemaField[]> = {
     { key: 'append', label: 'Append (don’t overwrite)', type: 'boolean' },
   ],
   lock_workstation: [{ key: 'label', label: 'Label', type: 'text' }],
+  delay_wait: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'delaySeconds', label: 'Seconds', type: 'number' },
+    { key: 'delayMs', label: 'Milliseconds (overrides seconds)', type: 'number' },
+  ],
+  send_email: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'smtpHost', label: 'SMTP host', type: 'text' },
+    { key: 'smtpPort', label: 'SMTP port', type: 'number' },
+    { key: 'smtpUser', label: 'Username', type: 'text' },
+    { key: 'smtpPass', label: 'Password', type: 'text' },
+    { key: 'from', label: 'From', type: 'text' },
+    { key: 'to', label: 'To', type: 'text' },
+    { key: 'subject', label: 'Subject', type: 'text' },
+    { key: 'body', label: 'Body', type: 'textarea' },
+  ],
+  slack_notification: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'webhookUrl', label: 'Webhook URL', type: 'text', placeholder: 'https://hooks.slack.com/...' },
+    { key: 'text', label: 'Message', type: 'textarea' },
+    { key: 'username', label: 'Username', type: 'text' },
+    { key: 'iconEmoji', label: 'Icon emoji', type: 'text' },
+  ],
+  set_variable: [
+    { key: 'label', label: 'Label', type: 'text' },
+    { key: 'variableName', label: 'Variable name', type: 'text' },
+    { key: 'variableValue', label: 'Value', type: 'text' },
+  ],
   input_simulation: [
     { key: 'label', label: 'Label', type: 'text' },
     {

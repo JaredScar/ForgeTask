@@ -1,7 +1,9 @@
 import { net } from 'electron';
 
-/** Post a message to a Slack incoming webhook URL (Pro). */
-export async function runSlackNotification(config: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+/** Validates a Slack webhook and builds the JSON body. Does not send it. */
+export function slackNotificationRequest(
+  config: Record<string, unknown>
+): { ok: false; error: string } | { ok: true; url: string; body: string } {
   const webhookUrl = String(config['webhookUrl'] ?? '').trim();
   const text = String(config['text'] ?? '').trim();
   const username = String(config['username'] ?? 'TaskForge').trim();
@@ -18,7 +20,14 @@ export async function runSlackNotification(config: Record<string, unknown>): Pro
   }
   if (url.protocol !== 'https:') return { ok: false, error: 'webhookUrl must use HTTPS' };
 
-  const body = JSON.stringify({ text, username, icon_emoji: iconEmoji });
+  return { ok: true, url: webhookUrl, body: JSON.stringify({ text, username, icon_emoji: iconEmoji }) };
+}
+
+/** Post a message to a Slack incoming webhook URL (Pro). */
+export async function runSlackNotification(config: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+  const built = slackNotificationRequest(config);
+  if (!built.ok) return built;
+  const { url: webhookUrl, body } = built;
 
   return new Promise<{ ok: boolean; error?: string }>((resolve) => {
     const req = net.request({ method: 'POST', url: webhookUrl });

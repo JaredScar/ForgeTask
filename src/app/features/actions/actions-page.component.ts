@@ -8,7 +8,7 @@ import type { WorkflowDto } from '../../../types/taskforge-window';
 
 type ActionItem = { kind: string; title: string; desc: string; icon: string; pro: boolean };
 
-const BASIC: ActionItem[] = [
+export const ACTION_PAGE_BASIC: ActionItem[] = [
   { kind: 'open_application', title: 'Open Application', desc: 'Launch any program', icon: '🖥', pro: false },
   { kind: 'show_notification', title: 'Show Notification', desc: 'Display Windows notification', icon: '🔔', pro: false },
   { kind: 'open_file_folder', title: 'Open File/Folder', desc: 'Open in default program', icon: '📂', pro: false },
@@ -22,7 +22,7 @@ const BASIC: ActionItem[] = [
   { kind: 'lock_workstation', title: 'Lock screen', desc: 'Lock Windows session', icon: '🔒', pro: false },
 ];
 
-const ADVANCED: ActionItem[] = [
+export const ACTION_PAGE_ADVANCED: ActionItem[] = [
   { kind: 'run_script', title: 'Run Script', desc: 'PowerShell or batch file', icon: '⌨', pro: true },
   { kind: 'http_request', title: 'HTTP Request', desc: 'Call APIs and webhooks', icon: '🌐', pro: true },
   { kind: 'zip_archive', title: 'Create ZIP', desc: 'Archive files or folders', icon: '🗜', pro: true },
@@ -30,6 +30,11 @@ const ADVANCED: ActionItem[] = [
   { kind: 'wake_on_lan', title: 'Wake-on-LAN', desc: 'Magic packet to wake a device', icon: '⚡', pro: true },
   { kind: 'tcp_port_check', title: 'TCP port check', desc: 'Health-check a host and port', icon: '🔌', pro: true },
   { kind: 'screenshot_save', title: 'Screenshot', desc: 'Capture screen to PNG', icon: '📸', pro: true },
+  { kind: 'delay_wait', title: 'Delay / wait', desc: 'Pause the workflow', icon: '⏳', pro: true },
+  { kind: 'send_email', title: 'Send email', desc: 'Send mail through SMTP', icon: '✉️', pro: true },
+  { kind: 'slack_notification', title: 'Slack message', desc: 'Post to a Slack webhook', icon: '💬', pro: true },
+  { kind: 'set_variable', title: 'Set variable', desc: 'Update a variable during the run', icon: '📦', pro: true },
+  { kind: 'input_simulation', title: 'Keyboard / mouse', desc: 'Send keystrokes or a click', icon: '⌨️', pro: true },
 ];
 
 @Component({
@@ -150,8 +155,8 @@ export class ActionsPageComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
 
-  protected readonly basic = BASIC;
-  protected readonly advanced = ADVANCED;
+  protected readonly basic = ACTION_PAGE_BASIC;
+  protected readonly advanced = ACTION_PAGE_ADVANCED;
   protected readonly usage = signal<Record<string, number>>({});
   protected readonly busy = signal(false);
   protected readonly appendTarget = signal<ActionItem | null>(null);

@@ -26,6 +26,38 @@ import { runSlackNotification } from '../actions/slack-notification.action';
 
 const execFileAsync = promisify(execFile);
 
+export function killProcessCommand(
+  config: Record<string, unknown>
+): { ok: false; error: string } | { ok: true; file: string; args: string[] } {
+  const pid = config['pid'];
+  const processName = config['processName'] ?? config['process'];
+  if (pid != null && pid !== '') {
+    return { ok: true, file: 'taskkill', args: ['/PID', String(pid), '/F'] };
+  }
+  if (processName) {
+    return { ok: true, file: 'taskkill', args: ['/IM', String(processName).trim(), '/F'] };
+  }
+  return { ok: false, error: 'Set processName or pid in config' };
+}
+
+/** Accepts only http(s). Does not open a browser. */
+export function openUrlTarget(raw: string): { ok: true; url: string } | { ok: false; error: string } {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return { ok: false, error: 'Invalid URL' };
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return { ok: false, error: 'Only http and https URLs are allowed' };
+  }
+  return { ok: true, url: parsed.toString() };
+}
+
+export function clipboardText(config: Record<string, unknown>): string {
+  return String(config['text'] ?? '');
+}
+
 export function lockWorkstationPlan(
   platform: NodeJS.Platform
 ): { ok: true; file: string; args: string[] } | { ok: false; error: string } {
@@ -100,22 +132,17 @@ export async function executeActionNode(
         return { status: 'success', message: String(config['label'] ?? 'Audio'), durationMs: Date.now() - start, output: msg };
       }
       case 'kill_process': {
-        const pid = config['pid'];
-        const processName = config['processName'] ?? config['process'];
+        const command = killProcessCommand(config);
+        if (!command.ok) {
+          return {
+            status: 'failure',
+            message: 'kill_process',
+            durationMs: Date.now() - start,
+            error: command.error,
+          };
+        }
         try {
-          if (pid != null && pid !== '') {
-            await execFileAsync('taskkill', ['/PID', String(pid), '/F'], { windowsHide: true });
-          } else if (processName) {
-            const im = String(processName).trim();
-            await execFileAsync('taskkill', ['/IM', im, '/F'], { windowsHide: true });
-          } else {
-            return {
-              status: 'failure',
-              message: 'kill_process',
-              durationMs: Date.now() - start,
-              error: 'Set processName or pid in config',
-            };
-          }
+          await execFileAsync(command.file, command.args, { windowsHide: true });
           return {
             status: 'success',
             message: String(config['label'] ?? 'Kill process'),
@@ -170,32 +197,21 @@ export async function executeActionNode(
       }
       case 'open_url': {
         const label = String(config['label'] ?? 'Open URL');
-        const raw = String(config['url'] ?? '').trim();
-        let parsed: URL;
-        try {
-          parsed = new URL(raw);
-        } catch {
+        const target = openUrlTarget(String(config['url'] ?? '').trim());
+        if (!target.ok) {
           return {
             status: 'failure',
             message: label,
             durationMs: Date.now() - start,
-            error: 'Invalid URL',
+            error: target.error,
           };
         }
-        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-          return {
-            status: 'failure',
-            message: label,
-            durationMs: Date.now() - start,
-            error: 'Only http and https URLs are allowed',
-          };
-        }
-        await shell.openExternal(parsed.toString());
+        await shell.openExternal(target.url);
         return { status: 'success', message: label, durationMs: Date.now() - start };
       }
       case 'clipboard_write': {
         const label = String(config['label'] ?? 'Clipboard');
-        const text = String(config['text'] ?? '');
+        const text = clipboardText(config);
         clipboard.writeText(text);
         return { status: 'success', message: label, durationMs: Date.now() - start };
       }

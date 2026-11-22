@@ -6,7 +6,7 @@ import { isEntitlementRequiredError } from '../../core/utils/entitlement-error';
 
 type TriggerItem = { kind: string; title: string; desc: string; icon: string; pro: boolean };
 
-const BASIC: TriggerItem[] = [
+export const TRIGGER_PAGE_BASIC: TriggerItem[] = [
   { kind: 'time_schedule', title: 'Time Schedule', desc: 'Run at specific times or intervals', icon: '🕐', pro: false },
   { kind: 'interval_trigger', title: 'Every N minutes', desc: 'Repeating timer without cron', icon: '⏱', pro: false },
   { kind: 'power_event', title: 'Power & session', desc: 'AC/battery, sleep, resume, lock', icon: '🔋', pro: false },
@@ -14,7 +14,7 @@ const BASIC: TriggerItem[] = [
   { kind: 'system_startup', title: 'System Startup', desc: 'Run on Windows login', icon: '↻', pro: false },
 ];
 
-const ADVANCED: TriggerItem[] = [
+export const TRIGGER_PAGE_ADVANCED: TriggerItem[] = [
   { kind: 'network_change', title: 'Network Change', desc: 'Detect WiFi or network changes', icon: '📶', pro: true },
   { kind: 'file_change', title: 'File Change', desc: 'Monitor file or folder modifications', icon: '📁', pro: true },
   { kind: 'cpu_memory_usage', title: 'CPU/Memory Usage', desc: 'Trigger on resource thresholds', icon: '💾', pro: true },
@@ -22,6 +22,11 @@ const ADVANCED: TriggerItem[] = [
   { kind: 'idle_trigger', title: 'User idle', desc: 'After keyboard/mouse idle time', icon: '💤', pro: true },
   { kind: 'memory_trigger', title: 'Memory usage', desc: 'RAM percent above or below threshold', icon: '🧠', pro: true },
   { kind: 'device_trigger', title: 'USB change', desc: 'When USB device count changes', icon: '🔌', pro: true },
+  { kind: 'webhook_trigger', title: 'Webhook', desc: 'HTTP POST to a local webhook URL', icon: '🔗', pro: true },
+  { kind: 'process_exit', title: 'Process exit', desc: 'When a monitored process stops', icon: '🛑', pro: true },
+  { kind: 'window_focus', title: 'Window focus', desc: 'When a window title matches', icon: '🪟', pro: true },
+  { kind: 'display_change', title: 'Display change', desc: 'When the monitor layout changes', icon: '🖥', pro: true },
+  { kind: 'clipboard_monitor', title: 'Clipboard change', desc: 'When clipboard text changes', icon: '📋', pro: true },
 ];
 
 @Component({
@@ -91,8 +96,8 @@ export class TriggersPageComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
 
-  protected readonly basic = BASIC;
-  protected readonly advanced = ADVANCED;
+  protected readonly basic = TRIGGER_PAGE_BASIC;
+  protected readonly advanced = TRIGGER_PAGE_ADVANCED;
   protected readonly usage = signal<Record<string, number>>({});
   protected readonly busy = signal(false);
   protected readonly proEntitled = signal(false);
